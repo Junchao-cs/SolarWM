@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import tempfile
@@ -63,6 +64,15 @@ def build_parser() -> argparse.ArgumentParser:
     data_commands = data.add_subparsers(dest="data_command", required=True)
     inspect = data_commands.add_parser("inspect")
     inspect.add_argument("index", type=Path)
+    warm = data_commands.add_parser(
+        "warm-cache", help="optionally prepare an explicit shard working set before training"
+    )
+    warm.add_argument("index", type=Path, help="recipe index or node-specific planned subset")
+    warm.add_argument("--root", required=True, help="GCS root used by training")
+    warm.add_argument("--cache-dir", required=True, type=Path)
+    warm.add_argument("--max-gib", required=True, type=float)
+    warm.add_argument("--workers", type=int, default=4)
+    warm.add_argument("--timeout-seconds", type=float, default=7200.0)
     windows = data_commands.add_parser(
         "materialize-wan153f",
         help="join raw Wan 153f sources to the released fixed-window indexes",
@@ -249,6 +259,29 @@ def _config_command(args: argparse.Namespace) -> int:
 
 
 def _data_command(args: argparse.Namespace) -> int:
+    if args.data_command == "warm-cache":
+        from dataclasses import asdict
+
+        from solarwm.data.prefetch import warm_shard_cache
+        from solarwm.data.transport import GCSResolver
+
+        if not math.isfinite(args.max_gib) or args.max_gib <= 0:
+            raise SolarWMError("--max-gib must be finite and positive")
+        max_bytes = int(args.max_gib * 1024**3)
+        resolver = GCSResolver(root=args.root, cache_dir=args.cache_dir, max_bytes=max_bytes)
+        result = warm_shard_cache(
+            read_index(args.index),
+            resolver,
+            max_bytes=max_bytes,
+            max_workers=args.workers,
+            timeout_seconds=args.timeout_seconds,
+            progress=lambda done, total: print(
+                f"cache warmup: {done}/{total} shards ready", file=sys.stderr, flush=True
+            ),
+        )
+        _write_json(asdict(result))
+        return 0
+
     if args.data_command == "materialize-wan153f":
         from solarwm.backends.wan22.windows import write_wan153f_window_index
 

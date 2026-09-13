@@ -35,6 +35,54 @@ def _pixels(value: Any, *, device: Any) -> Any:
     return tensor.to(device=device, non_blocking=True).contiguous()
 
 
+def encode_joint_prompt_condition(
+    keyframe: Any, caption: str, *, processor: Any, tokenizer: Any, text_encoder: Any, device: Any
+) -> tuple[Any, Any]:
+    import torch
+    from PIL import Image
+
+    if not isinstance(keyframe, Image.Image):
+        array = np.asarray(keyframe, dtype=np.uint8)
+        keyframe = Image.fromarray(array, mode="RGB")
+    vision = processor.image_processor(images=[keyframe], return_tensors="pt")
+    grid = vision["image_grid_thw"]
+    merge = processor.image_processor.merge_size**2
+    image_tokens = int(grid[0].prod()) // merge
+    label_ids = tokenizer("<Picture 1>: ", add_special_tokens=False)["input_ids"]
+    vision_ids = (
+        [tokenizer.convert_tokens_to_ids("<|vision_start|>")]
+        + [tokenizer.convert_tokens_to_ids("<|image_pad|>")] * image_tokens
+        + [tokenizer.convert_tokens_to_ids("<|vision_end|>")]
+    )
+    caption_ids = tokenizer(str(caption), add_special_tokens=False)["input_ids"]
+    token_ids = label_ids + vision_ids + caption_ids
+    tags = [1] * len(label_ids) + [0] * len(vision_ids) + [1] * len(caption_ids)
+    if not token_ids:
+        raise DataContractError("H3 Qwen presentation produced no tokens")
+    input_ids = torch.tensor([token_ids], dtype=torch.long, device=device)
+    token_types = torch.tensor(
+        processor.create_mm_token_type_ids([token_ids]),
+        dtype=torch.long,
+        device=device,
+    )
+    outputs = text_encoder.model(
+        input_ids=input_ids,
+        attention_mask=torch.ones_like(input_ids),
+        mm_token_type_ids=token_types,
+        use_cache=False,
+        output_hidden_states=True,
+        pixel_values=vision["pixel_values"].to(device, text_encoder.dtype),
+        image_grid_thw=grid.to(device),
+    )
+    if len(outputs.hidden_states) <= H3_TEXT_ENCODER_LAYER:
+        raise DataContractError("H3 Qwen has no hidden state 50")
+    hidden = outputs.hidden_states[H3_TEXT_ENCODER_LAYER][0].to(torch.bfloat16).contiguous().cpu()
+    tags_tensor = torch.tensor(tags, dtype=torch.long)
+    if tuple(hidden.shape) != (len(token_ids), 5120):
+        raise DataContractError("H3 Qwen hidden state has the wrong shape")
+    return hidden, tags_tensor
+
+
 class OfficialH3Codec(H3Codec):
     """Concrete official H3 encoder implementation."""
 
@@ -123,51 +171,14 @@ class OfficialH3Codec(H3Codec):
         return ((latent - mean) / std).to(torch.bfloat16).contiguous()
 
     def _joint_prompt(self, keyframe: Any, caption: str) -> tuple[Any, Any]:
-        import torch
-        from PIL import Image
-
-        if not isinstance(keyframe, Image.Image):
-            array = np.asarray(keyframe, dtype=np.uint8)
-            keyframe = Image.fromarray(array, mode="RGB")
-        vision = self.processor.image_processor(images=[keyframe], return_tensors="pt")
-        grid = vision["image_grid_thw"]
-        merge = self.processor.image_processor.merge_size**2
-        image_tokens = int(grid[0].prod()) // merge
-        label_ids = self.tokenizer("<Picture 1>: ", add_special_tokens=False)["input_ids"]
-        vision_ids = (
-            [self.tokenizer.convert_tokens_to_ids("<|vision_start|>")]
-            + [self.tokenizer.convert_tokens_to_ids("<|image_pad|>")] * image_tokens
-            + [self.tokenizer.convert_tokens_to_ids("<|vision_end|>")]
-        )
-        caption_ids = self.tokenizer(str(caption), add_special_tokens=False)["input_ids"]
-        token_ids = label_ids + vision_ids + caption_ids
-        tags = [1] * len(label_ids) + [0] * len(vision_ids) + [1] * len(caption_ids)
-        if not token_ids:
-            raise DataContractError("H3 Qwen presentation produced no tokens")
-        input_ids = torch.tensor([token_ids], dtype=torch.long, device=self.device)
-        token_types = torch.tensor(
-            self.processor.create_mm_token_type_ids([token_ids]),
-            dtype=torch.long,
+        return encode_joint_prompt_condition(
+            keyframe,
+            caption,
+            processor=self.processor,
+            tokenizer=self.tokenizer,
+            text_encoder=self.text_encoder,
             device=self.device,
         )
-        outputs = self.text_encoder.model(
-            input_ids=input_ids,
-            attention_mask=torch.ones_like(input_ids),
-            mm_token_type_ids=token_types,
-            use_cache=False,
-            output_hidden_states=True,
-            pixel_values=vision["pixel_values"].to(self.device, self.text_encoder.dtype),
-            image_grid_thw=grid.to(self.device),
-        )
-        if len(outputs.hidden_states) <= H3_TEXT_ENCODER_LAYER:
-            raise DataContractError("H3 Qwen has no hidden state 50")
-        hidden = (
-            outputs.hidden_states[H3_TEXT_ENCODER_LAYER][0].to(torch.bfloat16).contiguous().cpu()
-        )
-        tags_tensor = torch.tensor(tags, dtype=torch.long)
-        if tuple(hidden.shape) != (len(token_ids), 5120):
-            raise DataContractError("H3 Qwen hidden state has the wrong shape")
-        return hidden, tags_tensor
 
     def _silence_latents(self) -> Any:
         import torch

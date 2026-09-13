@@ -157,6 +157,39 @@ def test_h3_loader_requires_explicit_weight_source(tmp_path) -> None:
         _load_lora_checkpoint(str(tmp_path / "model.pt"), object(), weight_source="")
 
 
+@pytest.mark.parametrize("stage", ["stage0p5", "stage1"])
+def test_h3_stage0p5_inference_loads_published_ema_and_checks_stage(tmp_path, stage) -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.checkpoint import CheckpointTransaction
+
+    values = {"block.lora_A.weight": torch.full((2, 2), 1.2345)}
+    parameter = torch.zeros(2, 2, dtype=torch.bfloat16)
+    lora = SimpleNamespace(parameter_by_key={"block.lora_A.weight": parameter})
+    contract = _checkpoint_contract(
+        encoder_profile={"pixel_frames": 158, "height": 768, "width": 1344},
+        silence_profile={},
+        base_model={},
+        config={"train": {"stage": stage}},
+    )
+    root = tmp_path / "model"
+    with CheckpointTransaction(root) as transaction:
+        torch.save(
+            {"schema": "solarwm.minimax-h3-ema.v1", "shadow": values},
+            transaction.path / "ema.pt",
+        )
+        transaction.commit(
+            step=10500, contract=contract, required_components=["ema.pt"], metadata={}
+        )
+    if stage == "stage1":
+        with pytest.raises(BackendContractError, match="contract"):
+            _load_lora_checkpoint(str(root), lora, weight_source="ema")
+        assert torch.count_nonzero(parameter) == 0
+    else:
+        identity = _load_lora_checkpoint(str(root), lora, weight_source="ema")
+        assert identity == "stage0p5:ema:step=10500"
+        assert torch.equal(parameter, values["block.lora_A.weight"].to(torch.bfloat16))
+
+
 def test_h3_base_identity_is_readable_and_path_independent() -> None:
     first = {
         "checkpoint_path": "/models/first/MiniMax-H3",
@@ -834,6 +867,7 @@ def test_h3_reader_treats_tensor_digest_as_offline_metadata(
     )
     stream._shard_prefetcher = Prefetcher()
     stream.fixed_validation = False
+    stream.camera_audit_latents = 47
 
     batch = stream._next_once()
     assert prepared == [plan]

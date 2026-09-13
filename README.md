@@ -56,6 +56,10 @@ inference.
 
 ## News
 
+- **September 13, 2026** — We release SolarWM-H3 training and inference code,
+  [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and
+  [preencoded training data](docs/latent-wds.md) for Stage0.5, Stage1, and Stage2.
+  See the [H3 guide](docs/backends/minimax-h3.md) for checkpoint setup.
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
   stages, and bidirectional weights for SolarWM-14B, SolarWM-LTX, and SolarWM-H3.
@@ -81,7 +85,7 @@ autoregressive model.
 | **Wan2.2-5B** | ✓ | ✓ | ✓ | train, infer, preencode |
 | **Wan2.2-14B** | ✓ | Coming soon | Coming soon | train, infer, preencode |
 | **LTX-2.5** | ✓ | Coming soon | Coming soon | train, infer, preencode |
-| **MiniMax-H3** | ✓ | Coming soon | Coming soon | train, infer, preencode |
+| **MiniMax-H3** | ✓ | ✓ | ✓ | train, infer, preencode |
 
 ## Install
 
@@ -97,7 +101,8 @@ solarwm environment probe
 Model weights are available from the
 [`SolarWM model collection`](https://huggingface.co/collections/junchaoh-cs/solarwm). See the
 [Wan2.2 TI2V-5B guide](docs/backends/wan22-ti2v-5b.md) for Stage0.5, Stage1,
-and Stage2 commands. Data access options are described below.
+and Stage2 commands. The [MiniMax-H3 guide](docs/backends/minimax-h3.md) provides
+launch commands for Stage0.5, Stage1, and Stage2.
 
 ## Data
 
@@ -124,6 +129,10 @@ to raw data.
 3. **Request prepared raw-WDS.** Submit the
    [Dataset Access Form](https://docs.google.com/forms/d/e/1FAIpQLSfS-SLOiSRVDWwZ2kPl9ywN27aB6QplN0jpdKaBu-gG8aNsvQ/viewform).
    Approved applicants receive download instructions by email.
+4. **Download the standalone test set.** The
+   [SolarWM standalone test set v1](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data_test-set-v1)
+   contains the current 1,300-example, 13-source evaluation set in 60
+   WebDataset tar files (approximately 77.4 GB), without the training payload.
 
 See the [dataset access guide](docs/data-access.md) for download commands and
 the payload required by each training, validation, and inference example.
@@ -133,51 +142,56 @@ the payload required by each training, validation, and inference example.
 ```bash
 # Validate and render the exact resolved configuration.
 solarwm config resolve \
-  --config configs/examples/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml \
-  --set model.base_path=/path/to/SolarWM-models/SolarWM-5B-base \
-  --set checkpoint.path=/path/to/SolarWM-models/SolarWM-5B-bid-stage0p5-81f/model.pt \
+  --config configs/examples/minimax_h3/stage0p5-158f-lora384-sp2.yaml \
+  --set distributed.world_size=8 \
+  --set train.global_batch_size=4 \
+  --set model.checkpoint_path=/path/to/SolarWM-models/SolarWM-h3-33B-base \
   --set data.index_root=/path/to/SolarWM-Data/releases-v1 \
   --set data.transport.root=/path/to/SolarWM-Data/releases-v1 \
-  --set runtime.validate_every=0 \
-  --set runtime.output_dir=/path/to/output
+  --set data.silence_latents_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/h3_silence_153_158_170.safetensors \
+  --set data.encoder_contract_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/encoder_contract.json \
+  --set runtime.output_dir=/path/to/output/h3-stage0p5-158f
 
-# Train the released preencoded recipe without raw-WDS.
+# Train H3 Stage0.5 with preencoded latents.
 torchrun --standalone --nproc-per-node=8 \
   -m solarwm train \
-  --config configs/examples/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml \
+  --config configs/examples/minimax_h3/stage0p5-158f-lora384-sp2.yaml \
   --set distributed.world_size=8 \
-  --set train.global_batch_size=8 \
-  --set model.base_path=/path/to/SolarWM-models/SolarWM-5B-base \
-  --set checkpoint.path=/path/to/SolarWM-models/SolarWM-5B-bid-stage0p5-81f/model.pt \
+  --set train.global_batch_size=4 \
+  --set model.checkpoint_path=/path/to/SolarWM-models/SolarWM-h3-33B-base \
   --set data.index_root=/path/to/SolarWM-Data/releases-v1 \
   --set data.transport.root=/path/to/SolarWM-Data/releases-v1 \
-  --set runtime.validate_every=0 \
-  --set runtime.output_dir=/path/to/output
+  --set data.silence_latents_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/h3_silence_153_158_170.safetensors \
+  --set data.encoder_contract_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/encoder_contract.json \
+  --set runtime.output_dir=/path/to/output/h3-stage0p5-158f
 
-# Run Wan2.2-5B Stage2 inference for the longest camera-backed horizon.
-torchrun --standalone --nproc-per-node=1 -m solarwm infer \
-  --config configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml \
-  --set model.base_path=/path/to/SolarWM-models/SolarWM-5B-base \
-  --set checkpoint.path=/path/to/SolarWM-models/SolarWM-5B-sgf-stage2-81f \
+# Run H3 Stage2 inference for 158 frames.
+torchrun --standalone --nproc-per-node=8 -m solarwm infer \
+  --config configs/examples/minimax_h3/infer-stage2-158f-sp4.yaml \
+  --set model.checkpoint_path=/path/to/SolarWM-models/SolarWM-h3-33B-base \
+  --set checkpoint.resume_from=/path/to/SolarWM-models/SolarWM-h3-33B-sgf-stage2-158f \
+  --set checkpoint.weight_source=ema \
   --set data.index_root=/path/to/SolarWM-Data/releases-v1 \
   --set data.transport.root=/path/to/SolarWM-Data/releases-v1 \
-  --set inference.run_id=my-camera-run \
-  --set runtime.output_dir=/path/to/output
+  --set data.silence_latents_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/h3_silence_153_158_170.safetensors \
+  --set data.encoder_contract_path=/path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/encoder_contract.json \
+  --set runtime.output_dir=/path/to/output/h3-stage2-infer
 
-# Preencode raw-WDS for the Wan2.2-5B 153f recipe.
+# Preencode raw-WDS for the H3 158f recipe.
 torchrun --standalone --nproc-per-node=8 \
   -m solarwm preencode \
-  --config configs/examples/wan22_ti2v_5b/preencode_153f.yaml \
-  --set model.base_path=/path/to/SolarWM-models/SolarWM-5B-base \
-  --set data.index_root=/path/to/wan153f-fixed-window-index \
+  --config configs/examples/minimax_h3/preencode-158f.yaml \
+  --set model.checkpoint_path=/path/to/SolarWM-models/SolarWM-h3-33B-base \
+  --set data.index_root=/path/to/SolarWM-Data/releases-v1 \
   --set data.transport.root=/path/to/SolarWM-Data/releases-v1 \
-  --set preencode.output_root=/path/to/latent-wds/wan22-ti2v5b-153f-480p-v1 \
-  --set preencode.logical_output_root=/path/to/recipes/wan22-ti2v5b-153f-480p-v1 \
-  --set runtime.output_dir=/path/to/output
+  --set preencode.output_root=/path/to/output/preencoded/minimax-h3-158f-768p-nomind-v1 \
+  --set runtime.output_dir=/path/to/output/h3-preencode
 ```
 
-The [quickstart](docs/quickstart.md) walks through a complete Wan2.2-5B setup.
-Copyable commands for every released route are in the backend guides.
+The [quickstart](docs/quickstart.md) covers H3 setup, training, and inference.
+For Stage1/Stage2 training and [full-length inference](docs/backends/minimax-h3.md#full-length-stage2-inference),
+see the [H3 guide](docs/backends/minimax-h3.md). Other models have their own
+backend guides.
 
 Every launch writes `resolved-config.json` and `launch-manifest.json` before
 model allocation. Config overrides are explicit and included in the resolved

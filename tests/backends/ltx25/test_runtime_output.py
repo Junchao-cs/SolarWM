@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import random
 from types import SimpleNamespace
 
-from solarwm.backends.ltx25.runtime import VerifiedTrainingRuntime
+import numpy as np
+
+from solarwm.backends.ltx25.runtime import (
+    VerifiedTrainingRuntime,
+    _host_rng_state,
+    _restore_host_rng_state,
+)
 
 
 class _RelativeCheckpointRuntime:
@@ -33,3 +40,22 @@ def test_verified_runtime_preserves_relative_checkpoint_compatibility(
 
     assert runtime.save_checkpoint(20) == "a" * 64
     assert observed == [tmp_path / "checkpoints/checkpoint-00000020"]
+
+
+def test_ltx_host_rng_state_round_trips() -> None:
+    original_python = random.getstate()
+    original_numpy = np.random.get_state()
+    try:
+        random.seed(12345)
+        np.random.seed(67890)
+        state = _host_rng_state()
+        expected = (random.random(), float(np.random.random()))
+
+        random.seed(1)
+        np.random.seed(2)
+        _restore_host_rng_state(state)
+
+        assert (random.random(), float(np.random.random())) == expected
+    finally:
+        random.setstate(original_python)
+        np.random.set_state(original_numpy)

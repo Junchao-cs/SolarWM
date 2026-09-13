@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import random
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -597,6 +598,8 @@ def test_checkpoint_commit_updates_inline_validation_weight_identity(
     runtime.optimizer = object()
     runtime.lr_scheduler = object()
     runtime.ema = object()
+    runtime.data = object()
+    runtime.device = object()
     monkeypatch.setattr(
         checkpoint,
         "save_full_checkpoint",
@@ -604,6 +607,49 @@ def test_checkpoint_commit_updates_inline_validation_weight_identity(
     )
     assert runtime.save_checkpoint(1000) == "a" * 64
     assert runtime.checkpoint_id == f"digest:{'a' * 64}"
+
+
+def test_rank_runtime_state_restores_reader_and_all_cpu_rng_streams() -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.backends.wan22.runtime.checkpoint import (
+        _local_rank_runtime_state,
+        _restore_rank_runtime_state,
+    )
+
+    class Reader:
+        def __init__(self) -> None:
+            self.position = 17
+
+        def state_dict(self) -> dict[str, int]:
+            return {"position": self.position}
+
+        def load_state_dict(self, value: dict[str, int]) -> None:
+            self.position = int(value["position"])
+
+    reader = Reader()
+    random.seed(123)
+    np.random.seed(456)
+    torch.manual_seed(789)
+    state = _local_rank_runtime_state(reader, torch.device("cpu"))
+    expected = (random.random(), float(np.random.random()), torch.rand(4))
+
+    reader.position = 99
+    random.seed(1)
+    np.random.seed(2)
+    torch.manual_seed(3)
+    _restore_rank_runtime_state([state], reader=reader, device=torch.device("cpu"))
+    assert reader.position == 17
+    assert random.random() == expected[0]
+    assert float(np.random.random()) == expected[1]
+    assert torch.equal(torch.rand(4), expected[2])
+
+
+def test_full_resume_rejects_checkpoint_without_rank_runtime_state() -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.backends.wan22.runtime.checkpoint import _restore_rank_runtime_state
+
+    with pytest.raises(BackendContractError, match="rank-local reader and RNG state"):
+        _restore_rank_runtime_state(None, reader=object(), device=torch.device("cpu"))
 
 
 def test_training_failure_still_cleans_up_distributed_state(

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import random
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from solarwm.checkpoint import (
     CheckpointContract,
@@ -16,6 +19,12 @@ from solarwm.checkpoint import (
 )
 from solarwm.errors import BackendContractError
 from solarwm.runtime.output_layout import checkpoint_model_dir
+from solarwm.runtime.safe_state import (
+    decode_numpy_rng_state,
+    decode_python_rng_state,
+    encode_numpy_rng_state,
+    encode_python_rng_state,
+)
 
 _MODEL_PREFIX = "model."
 
@@ -269,6 +278,85 @@ def _collective_error(local_error: str | None, *, phase: str) -> None:
         raise BackendContractError(f"Wan checkpoint {phase} failed collectively: {rendered}")
 
 
+def _local_rank_runtime_state(reader: Any, device: Any) -> dict[str, Any]:
+    import torch
+
+    state_dict = getattr(reader, "checkpoint_state_dict", None)
+    if not callable(state_dict):
+        state_dict = getattr(reader, "state_dict", None)
+    if not callable(state_dict):
+        raise BackendContractError("Wan checkpoint requires a stateful data reader")
+    _, rank, world_size = _distributed_context()
+    return {
+        "schema": "solarwm.wan22.rank-runtime.v1",
+        "rank": int(rank),
+        "world_size": int(world_size),
+        "reader": state_dict(),
+        "python_rng": encode_python_rng_state(random.getstate()),
+        "numpy_rng": encode_numpy_rng_state(np.random.get_state()),
+        "torch_cpu_rng": torch.get_rng_state().cpu(),
+        "torch_cuda_rng": (
+            torch.cuda.get_rng_state(device).cpu() if torch.device(device).type == "cuda" else None
+        ),
+    }
+
+
+def _gather_rank_runtime_states(reader: Any, device: Any) -> list[dict[str, Any]]:
+    local = _local_rank_runtime_state(reader, device)
+    dist, _, world_size = _distributed_context()
+    if world_size == 1:
+        return [local]
+    gathered: list[Any] = [None] * world_size
+    dist.all_gather_object(gathered, local)
+    return list(gathered)
+
+
+def _restore_rank_runtime_state(states: Any, *, reader: Any, device: Any) -> None:
+    """Restore exact per-rank reader and RNG state."""
+
+    import torch
+
+    if states is None:
+        raise BackendContractError("Wan full resume requires rank-local reader and RNG state")
+    dist, rank, world_size = _distributed_context()
+    del dist
+    if not isinstance(states, list) or len(states) != world_size:
+        raise BackendContractError("Wan checkpoint raw-rank runtime state count differs")
+    selected = states[rank]
+    if (
+        not isinstance(selected, Mapping)
+        or selected.get("schema") != "solarwm.wan22.rank-runtime.v1"
+        or int(selected.get("rank", -1)) != rank
+        or int(selected.get("world_size", -1)) != world_size
+    ):
+        raise BackendContractError(f"Wan checkpoint runtime state for rank {rank} is invalid")
+    load_state_dict = getattr(reader, "load_state_dict", None)
+    if not callable(load_state_dict):
+        raise BackendContractError("Wan resume requires a stateful data reader")
+    load_state_dict(selected.get("reader", {}))
+    random.setstate(decode_python_rng_state(selected.get("python_rng")))
+    np.random.set_state(decode_numpy_rng_state(selected.get("numpy_rng")))
+    cpu_state = selected.get("torch_cpu_rng")
+    if (
+        not isinstance(cpu_state, torch.Tensor)
+        or cpu_state.dtype != torch.uint8
+        or cpu_state.ndim != 1
+        or cpu_state.numel() == 0
+    ):
+        raise BackendContractError("Wan checkpoint CPU RNG state is invalid")
+    torch.set_rng_state(cpu_state)
+    cuda_state = selected.get("torch_cuda_rng")
+    if torch.device(device).type == "cuda":
+        if (
+            not isinstance(cuda_state, torch.Tensor)
+            or cuda_state.dtype != torch.uint8
+            or cuda_state.ndim != 1
+            or cuda_state.numel() == 0
+        ):
+            raise BackendContractError("Wan checkpoint CUDA RNG state is invalid")
+        torch.cuda.set_rng_state(cuda_state, device)
+
+
 def _broadcast_text(value: str) -> str:
     dist, _, world_size = _distributed_context()
     payload = [value]
@@ -482,15 +570,13 @@ def _resolve_input_checkpoint(
                 assert_resume_compatible(checkpoint_contract(config), verified.contract)
                 result = [
                     str(verified.path / "model.pt"),
-                    verified.manifest_digest,
+                    f"digest:{verified.manifest_digest}",
                     False,
                 ]
             elif source.is_file():
-                result = [
-                    str(source),
-                    _standalone_checkpoint_id(source),
-                    True,
-                ]
+                raise BackendContractError(
+                    "Wan full resume requires the complete checkpoint transaction directory"
+                )
             else:
                 raise BackendContractError(f"Wan checkpoint is missing: {source}")
         except Exception as exc:
@@ -774,8 +860,10 @@ def load_full_checkpoint(
     optimizer: Any,
     scheduler: Any,
     ema: Any,
+    reader: Any,
+    device: Any,
 ) -> RestoredWanCheckpoint:
-    """Restore live, EMA, optimizer, scheduler, and exact optimizer step."""
+    """Restore all algorithm-bearing state, including rank-local RNG and data position."""
 
     import torch
 
@@ -839,6 +927,17 @@ def load_full_checkpoint(
     else:
         local_error = None
     _collective_error(local_error, phase="optimizer/scheduler restore")
+    try:
+        _restore_rank_runtime_state(
+            payload.get("rank_runtime_state"),
+            reader=reader,
+            device=device,
+        )
+    except Exception as exc:
+        local_error = f"{type(exc).__name__}: {exc}"
+    else:
+        local_error = None
+    _collective_error(local_error, phase="rank runtime restore")
     return RestoredWanCheckpoint(step, identity, resolved, standalone, optimizer_names)
 
 
@@ -892,6 +991,8 @@ def save_full_checkpoint(
     optimizer: Any,
     scheduler: Any,
     ema: Any,
+    reader: Any,
+    device: Any,
 ) -> str:
     """Collectively create one full-state payload inside an atomic store."""
 
@@ -905,6 +1006,7 @@ def save_full_checkpoint(
         step=int(step),
         width=6,
     )
+    rank_runtime_state = _gather_rank_runtime_states(reader, device)
     live = _gather_full_state(diffusion.module, rank0_only=True)
     optimizer_state = _gather_full_optimizer(diffusion.module, optimizer)
     with ema.swapped_into(diffusion.module):
@@ -925,6 +1027,7 @@ def save_full_checkpoint(
                     "global_step": int(step),
                     "config": _plain(config),
                     "ema_num_updates": int(ema.num_updates),
+                    "rank_runtime_state": rank_runtime_state,
                 }
                 torch.save(payload, transaction.path / "model.pt")
                 committed = transaction.commit(
@@ -939,6 +1042,7 @@ def save_full_checkpoint(
                             "optimizer": "fsdp_full_optimizer_state",
                             "scheduler": "lr_scheduler",
                             "global_step": "completed_optimizer_steps",
+                            "rank_runtime_state": "per_raw_rank_rng_and_reader",
                         },
                     },
                 )

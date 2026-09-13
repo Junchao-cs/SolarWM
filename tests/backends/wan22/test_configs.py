@@ -115,6 +115,57 @@ def test_bucket_transport_preserves_the_same_backend_contract() -> None:
     create_backend(family="wan22_ti2v_5b").validate_config(config)
 
 
+def test_bucket_transport_accepts_a_separate_validation_cache() -> None:
+    path = EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_81f.yaml"
+    config = load_config(path).mutable_copy()
+    config["data"]["transport"] = {
+        "kind": "gcs",
+        "root": "gs://public-example-bucket",
+        "cache_dir": "/path/to/train-cache",
+        "cache_max_gib": 512,
+    }
+    config["runtime"]["data_cache_max_gib"] = 4096
+    config["runtime"]["validation_cache_dir"] = "/path/to/validation-cache"
+    config["runtime"]["validation_cache_max_gib"] = 64
+    config["data"]["index_root"] = "/path/to/staged-controls"
+    create_backend(family="wan22_ti2v_5b").validate_config(config)
+
+
+def test_bucket_transport_rejects_a_partial_validation_cache() -> None:
+    path = EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_81f.yaml"
+    config = load_config(path).mutable_copy()
+    config["data"]["transport"] = {
+        "kind": "gcs",
+        "root": "gs://public-example-bucket",
+        "cache_dir": "/path/to/train-cache",
+        "cache_max_gib": 512,
+    }
+    config["runtime"]["data_cache_max_gib"] = 4096
+    config["runtime"]["validation_cache_dir"] = "/path/to/validation-cache"
+    config["data"]["index_root"] = "/path/to/staged-controls"
+    with pytest.raises(BackendContractError, match="configured together"):
+        create_backend(family="wan22_ti2v_5b").validate_config(config)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"data_cache_dir": "/path/to/train-cache"},
+        {"data_cache_max_gib": 64},
+        {
+            "validation_cache_dir": "/path/to/validation-cache",
+            "validation_cache_max_gib": 64,
+        },
+    ),
+)
+def test_local_transport_rejects_runtime_cache_overrides(overrides: dict[str, object]) -> None:
+    path = EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_81f.yaml"
+    config = load_config(path).mutable_copy()
+    config["runtime"].update(overrides)
+    with pytest.raises(BackendContractError, match="only for gcs"):
+        create_backend(family="wan22_ti2v_5b").validate_config(config)
+
+
 def test_inference_rejects_nonstandard_checkpoint_format() -> None:
     path = EXAMPLES / "wan22_ti2v_5b" / "infer_stage0p5_fm_81f.yaml"
     config = load_config(path).mutable_copy()

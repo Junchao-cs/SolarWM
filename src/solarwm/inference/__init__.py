@@ -7,6 +7,7 @@ from .comparison import (
     publish_comparison_partition,
 )
 from .engine import (
+    GeneratedFile,
     GeneratedSample,
     InferenceAdapter,
     InferenceCase,
@@ -17,6 +18,7 @@ from .engine import (
 
 __all__ = [
     "ComparisonValidationRecord",
+    "GeneratedFile",
     "GeneratedSample",
     "InferenceAdapter",
     "InferenceCase",

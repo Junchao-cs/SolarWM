@@ -1,4 +1,4 @@
-"""Runnable MiniMax-H3 Stage0.5 training and inference orchestration."""
+"""MiniMax-H3 training, transactional checkpoints and shared validation lifecycle."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import math
 import os
 import random
+import time
 from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import replace
@@ -60,7 +61,7 @@ from solarwm.training import (
     TrainingEngine,
 )
 
-from .artifacts import H3PreencodedStream, load_silence_latents
+from .artifacts import H3PreencodedStream, h3_silence_profile, load_silence_latents
 from .distributed import get_sp_group, get_sp_rank, get_sp_size, sync_lora_gradients
 from .inference import camera_fingerprint, package_generated
 from .optional import load_conditioners, load_transformer, require_h3_runtime
@@ -136,6 +137,14 @@ def _reader(
     fixed_validation_sample_count: int | None = None,
     fixed_validation_sample_ids: Sequence[str] | None = None,
 ) -> Any:
+    if fixed_validation and config["validation"].get("prepared_plan"):
+        from .validation_inputs import H3PreparedValidationStream
+
+        return H3PreparedValidationStream(config, topology)
+    if fixed_validation and config["train"]["stage"] in {"stage1", "stage2"}:
+        from .validation_stream import H3IndexedValidationStream
+
+        return H3IndexedValidationStream(config, topology, frozen_ids=fixed_validation_sample_ids)
     data = config["data"]
     transport = data["transport"]
     common = {
@@ -161,6 +170,7 @@ def _reader(
         fixed_validation=fixed_validation,
         fixed_validation_sample_count=fixed_validation_sample_count,
         fixed_validation_sample_ids=fixed_validation_sample_ids,
+        camera_audit_latents=47 if fixed_validation else int(data["train_target_latents"]),
     )
 
 
@@ -231,16 +241,33 @@ def _checkpoint_contract(
     encoder_profile: Mapping[str, Any],
     silence_profile: Mapping[str, Any],
     base_model: Mapping[str, Any],
+    config: Mapping[str, Any] | None = None,
 ) -> CheckpointContract:
+    train = config["train"] if config is not None else {}
+    stage = str(train.get("stage", "stage0p5"))
+    stage_extras = {}
+    if stage != "stage0p5":
+        stage_extras = {
+            "chunk_latents": 5,
+            "window_chunks": 6,
+            "target_latents": 45 if stage == "stage1" else 47,
+            "rollout_latents": 50,
+            "student_rope_mode": "sliding_local" if stage == "stage2" else "native_absolute",
+            "training_profile": {
+                key: value
+                for key, value in train.items()
+                if key not in {"max_steps", "global_batch_size"}
+            },
+        }
     return CheckpointContract(
         family="minimax_h3",
-        stage="stage0p5",
-        causal_mode="bidirectional",
-        objective="flow_matching",
-        objective_variant="data_ward_velocity",
+        stage=stage,
+        causal_mode=str(train.get("causal_mode", "bidirectional")),
+        objective=str(train.get("objective", "flow_matching")),
+        objective_variant="v1_5" if stage == "stage1" else "data_ward_velocity",
         camera_translation_transform="logd4",
         parameterization="peft-lora-r384-alpha384",
-        sp_size=2,
+        sp_size=4 if stage == "stage2" else 2,
         data_generation="h3.158f.v1",
         extras={
             "encoder_profile": json.loads(json.dumps(dict(encoder_profile), sort_keys=True)),
@@ -249,7 +276,10 @@ def _checkpoint_contract(
             "lora_target_count": 312,
             "lora_trainable_parameters": 2_075_394_048,
             "optimizer": "fp32_master_adamw",
-            "ema": "rank_local_fp32_start0",
+            "ema": "rank_local_fp32_student_start39"
+            if stage == "stage2"
+            else "rank_local_fp32_start0",
+            **stage_extras,
         },
     )
 
@@ -265,7 +295,15 @@ def _assert_encoder_silence_identity(
         if isinstance(encoder_extras, Mapping)
         else None
     )
-    if expected_silence is not None and expected_silence != dict(silence_profile):
+    compatible_duration = expected_silence == h3_silence_profile() and any(
+        dict(silence_profile) == h3_silence_profile(pixel_frames=frames)
+        for frames in (153, 158, 170)
+    )
+    if (
+        expected_silence is not None
+        and expected_silence != dict(silence_profile)
+        and not compatible_duration
+    ):
         raise BackendContractError(
             "H3 encoder contract was produced with a different silence artifact"
         )
@@ -416,7 +454,7 @@ def _publish_h3_validation_plan(
 class H3TrainingRuntime:
     """Heavy implementation of the shared :class:`TrainingRuntime` protocol."""
 
-    def __init__(self, config: Mapping[str, Any]) -> None:
+    def __init__(self, config: Mapping[str, Any], *, defer_resume: bool = False) -> None:
         torch, _diffusers, _transformers = require_h3_runtime()
         import torch.distributed as dist
 
@@ -430,6 +468,9 @@ class H3TrainingRuntime:
         self.config = config
         self.model_cfg = config["model"]
         self.train_cfg = config["train"]
+        self.stage = str(self.train_cfg["stage"])
+        self.extra_roles: dict[str, Any] = {}
+        self.student_step = 0
         self.checkpoint_cfg = config["checkpoint"]
         self.runtime_cfg = config["runtime"]
         sp_size = int(config["distributed"]["sequence_parallel_size"])
@@ -448,6 +489,13 @@ class H3TrainingRuntime:
         identity = rng_identity("minimax_h3", int(config["data"].get("seed", 42)), self.topology)
         seed_process(identity.model_init_seed)
         modules = load_transformer(self.model_cfg, device=self.device)
+        if self.stage == "stage1":
+            modules.transformer.enable_anyflow(float(self.train_cfg["anyflow_gate"]))
+            modules.fp32_fsdp_units = (
+                *modules.fp32_fsdp_units,
+                modules.transformer.delta_embedding.linear_1,
+                modules.transformer.delta_embedding.linear_2,
+            )
         modules.transformer.train().requires_grad_(False)
         base_model = _base_model_load_receipt(self.model_cfg, modules.transformer)
         wrapped, self.lora = inject_h3_lora(
@@ -462,7 +510,16 @@ class H3TrainingRuntime:
             fp32_units=modules.fp32_fsdp_units,
             ignored_parameters=self.lora.parameters,
             activation_checkpointing=bool(self.train_cfg["fsdp"]["activation_checkpointing"]),
+            frozen_base_shard_size=self.train_cfg["fsdp"].get("frozen_base_shard_size"),
         )
+        self._weights_id = _base_weights_label(self.model_cfg)
+        if self.stage != "stage0p5":
+            from .weights import load_initial_weights
+
+            self._weights_id = load_initial_weights(
+                self.checkpoint_cfg["initialization"]["student"],
+                self.lora,
+            )
         self.objective_seed = int(identity.objective_seed)
         optimizer_cfg = self.train_cfg["optimizer"]
         self.optimizer = FP32MasterAdamW(
@@ -479,36 +536,59 @@ class H3TrainingRuntime:
             if step < warmup:
                 return float(step) / max(1, warmup)
             progress = min(1.0, (step - warmup) / max(1, total - warmup))
-            return 0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * progress))
+            minimum = float(optimizer_cfg.get("min_lr_ratio", 0.1))
+            return minimum + (1.0 - minimum) * 0.5 * (1.0 + math.cos(math.pi * progress))
 
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_scale)
-        self.ema = H3ShardedEMA(
-            self.model,
-            decay=float(self.checkpoint_cfg["ema"]["decay"]),
-            device=self.device,
-            trainable_only=True,
+        self.ema = (
+            None
+            if self.stage == "stage2"
+            else H3ShardedEMA(
+                self.model,
+                decay=float(self.checkpoint_cfg["ema"]["decay"]),
+                device=self.device,
+                trainable_only=True,
+            )
         )
         self.reader = _reader(config, self.topology)
         self.silence, silence_profile = load_silence_latents(
-            str(config["data"]["silence_latents_path"])
+            str(config["data"]["silence_latents_path"]),
+            pixel_frames=153 if self.stage == "stage1" else 158,
         )
         _assert_encoder_silence_identity(self.reader.encoder_profile, silence_profile)
         # Objective RNG advances continuously across microbatches and is
         # restored exactly by checkpoints.
         torch.manual_seed(self.objective_seed)
         torch.cuda.manual_seed_all(self.objective_seed)
-        self.core = H3Stage0p5Core(self.model, self.silence, self.device)
+        self.core = self._make_core()
         self.contract = _checkpoint_contract(
             encoder_profile=self.reader.encoder_profile,
             silence_profile=silence_profile,
             base_model=base_model,
+            config=config,
         )
         self._global_step = 0
-        self._weights_id = _base_weights_label(self.model_cfg)
         self._finite_clip_norm = finite_clip_norm
         resume = str(self.checkpoint_cfg.get("resume_from") or "").strip()
-        if resume:
+        if resume and not defer_resume:
             self.load_checkpoint(resume)
+
+    def _make_core(self) -> Any:
+        if self.stage == "stage1":
+            from .stage1 import H3Stage1Core
+
+            validation_silence, _ = load_silence_latents(
+                str(self.config["data"]["silence_latents_path"]),
+                pixel_frames=170,
+            )
+            return H3Stage1Core(
+                self.model,
+                self.silence,
+                self.device,
+                self.train_cfg,
+                validation_silence=validation_silence,
+            )
+        return H3Stage0p5Core(self.model, self.silence, self.device)
 
     @property
     def global_step(self) -> int:
@@ -537,6 +617,9 @@ class H3TrainingRuntime:
         return int.from_bytes(digest[:8], "little") & 0x7FFFFFFF, digest.hex()
 
     def train_microbatch(self, micro_index: int, grad_accum: int) -> MicrobatchResult:
+        if micro_index == 0:
+            self._step_started = time.monotonic()
+            self.torch.cuda.reset_peak_memory_stats(self.device)
         batch = self._next_batch()
         noise_seed, _ = self._noise_identity()
         identity = BatchIdentity(
@@ -555,10 +638,12 @@ class H3TrainingRuntime:
         with context:
             loss = self.core.forward_loss(batch, noise_seed=None)
             if not bool(self.torch.isfinite(loss).item()):
-                raise FloatingPointError("H3 Stage0.5 loss is non-finite")
+                raise FloatingPointError(f"H3 {self.stage} loss is non-finite")
             (loss / (int(grad_accum) * get_sp_size())).backward()
         loss_value = float(loss.item())
-        return MicrobatchResult(identity=identity, losses={"flow_matching": loss_value})
+        return MicrobatchResult(
+            identity=identity, losses={str(self.train_cfg["objective"]): loss_value}
+        )
 
     def assert_sp_peer_identity(self, identity: BatchIdentity) -> None:
         del identity
@@ -566,7 +651,7 @@ class H3TrainingRuntime:
     def prepare_optimizer_step(self) -> GradientStatus:
         sync_lora_gradients(self.lora.parameters)
         finite, norm = self._finite_clip_norm(
-            self.lora.parameters,
+            (parameter for parameter in self.model.parameters() if parameter.requires_grad),
             float(self.train_cfg["optimizer"].get("gradient_clip", 1.0)),
         )
         return GradientStatus(finite=finite, norm=norm)
@@ -624,10 +709,32 @@ class H3TrainingRuntime:
                     )
                     torch.save(self.optimizer.state_dict(), transaction.path / "optimizer.pt")
                     torch.save(self.scheduler.state_dict(), transaction.path / "scheduler.pt")
-                    torch.save(self.ema.state_dict(), transaction.path / "ema.pt")
+                    torch.save(
+                        self.ema.state_dict() if self.ema is not None else None,
+                        transaction.path / "ema.pt",
+                    )
+                    for role, state in self.extra_roles.items():
+                        torch.save(
+                            {
+                                "adapter": {
+                                    key: value.detach().cpu()
+                                    for key, value in state["lora"].state_dict().items()
+                                },
+                                "optimizer": state["optimizer"].state_dict(),
+                                "scheduler": state["scheduler"].state_dict(),
+                                "parameter_keys": list(state["lora"].parameter_by_key),
+                                "global_step": int(step),
+                                "student_step": self.student_step,
+                            },
+                            transaction.path / f"{role}.pt",
+                        )
                     torch.save(rank_states, transaction.path / "rank-state.pt")
                     torch.save(
-                        {"global_step": int(step), "weights_id": self._weights_id},
+                        {
+                            "global_step": int(step),
+                            "weights_id": self._weights_id,
+                            "student_step": self.student_step,
+                        },
                         transaction.path / "runtime.pt",
                     )
                     verified = transaction.commit(
@@ -640,6 +747,7 @@ class H3TrainingRuntime:
                             "ema.pt",
                             "rank-state.pt",
                             "runtime.pt",
+                            *(f"{role}.pt" for role in self.extra_roles),
                         ),
                         metadata={
                             "roles": {
@@ -680,6 +788,13 @@ class H3TrainingRuntime:
 
         def restore_local_state() -> Mapping[str, Any]:
             root = verified.path
+            runtime = torch.load(root / "runtime.pt", map_location="cpu", weights_only=True)
+            if int(runtime["global_step"]) != verified.step:
+                raise BackendContractError("H3 checkpoint runtime step differs from manifest")
+            if self.stage == "stage2" and int(runtime.get("student_step", -1)) != max(
+                0, (verified.step - 1) // 5
+            ):
+                raise BackendContractError("H3 SGF checkpoint student update count differs")
             adapter = torch.load(
                 root / "adapter.pt",
                 map_location="cpu",
@@ -696,10 +811,30 @@ class H3TrainingRuntime:
             self.scheduler.load_state_dict(
                 torch.load(root / "scheduler.pt", map_location="cpu", weights_only=True)
             )
-            self.ema.load_state_dict(
-                torch.load(root / "ema.pt", map_location="cpu", weights_only=True),
-                self.model,
-            )
+            ema_state = torch.load(root / "ema.pt", map_location="cpu", weights_only=True)
+            if ema_state is None:
+                if self.stage != "stage2":
+                    raise BackendContractError("H3 checkpoint is missing EMA state")
+                self.ema = None
+            else:
+                if self.ema is None:
+                    from .ema import H3ShardedEMA
+
+                    self.ema = H3ShardedEMA(
+                        self.model, decay=float(ema_state["decay"]), device=self.device
+                    )
+                self.ema.load_state_dict(ema_state, self.model)
+            for role, state in self.extra_roles.items():
+                saved = torch.load(root / f"{role}.pt", map_location="cpu", weights_only=True)
+                if (
+                    saved["parameter_keys"] != list(state["lora"].parameter_by_key)
+                    or saved["global_step"] != verified.step
+                    or saved["student_step"] != runtime["student_step"]
+                ):
+                    raise BackendContractError(f"H3 {role} checkpoint identity differs")
+                state["lora"].load_state_dict(saved["adapter"], broadcast=False)
+                state["optimizer"].load_state_dict(saved["optimizer"])
+                state["scheduler"].load_state_dict(saved["scheduler"])
             rank_states = torch.load(
                 root / "rank-state.pt",
                 map_location="cpu",
@@ -713,11 +848,7 @@ class H3TrainingRuntime:
             np.random.set_state(decode_numpy_rng_state(rank_state["numpy_rng"]))
             torch.set_rng_state(rank_state["torch_rng"])
             torch.cuda.set_rng_state(rank_state["cuda_rng"], self.device)
-            return torch.load(
-                root / "runtime.pt",
-                map_location="cpu",
-                weights_only=True,
-            )
+            return runtime
 
         runtime = _collective_call(
             restore_local_state,
@@ -728,6 +859,7 @@ class H3TrainingRuntime:
         if int(runtime["global_step"]) != verified.step:
             raise BackendContractError("H3 checkpoint runtime step differs from manifest")
         self._global_step = verified.step
+        self.student_step = int(runtime.get("student_step", 0))
         self._weights_id = verified.manifest_digest
 
     def _verify_resume_checkpoint(self, path: str) -> Any:
@@ -736,6 +868,29 @@ class H3TrainingRuntime:
         return verified
 
     def validate(self, step: int) -> Mapping[str, Any]:
+        python_rng, numpy_rng = random.getstate(), np.random.get_state()
+        cpu_rng = self.torch.get_rng_state()
+        cuda_rng = self.torch.cuda.get_rng_state(self.device)
+        try:
+            return self._validate(step)
+        finally:
+            random.setstate(python_rng)
+            np.random.set_state(numpy_rng)
+            self.torch.set_rng_state(cpu_rng)
+            self.torch.cuda.set_rng_state(cuda_rng, self.device)
+
+    def _validate(self, step: int) -> Mapping[str, Any]:
+        generation = {
+            "generation_mode": "bidirectional" if self.stage == "stage0p5" else "autoregressive",
+            "sample_solver": {
+                "stage0p5": "shifted-euler-data-ward",
+                "stage1": "flowmap",
+                "stage2": "self_forcing",
+            }[self.stage],
+            "train_latent_frames": 45 if self.stage == "stage1" else 47,
+            "rollout_latent_frames": 47 if self.stage == "stage0p5" else 50,
+            "decode_latent_frames": 47,
+        }
         sample_count, num_waves = _validation_schedule(
             self.config["validation"],
             self.topology,
@@ -747,18 +902,27 @@ class H3TrainingRuntime:
             sample_count=sample_count,
         )
         plan_source = "loaded" if frozen_plan is not None else "created"
-        stream = _reader(
-            self.config,
-            self.topology,
-            index_field="test_index",
-            fixed_validation=True,
-            fixed_validation_sample_count=sample_count,
-            fixed_validation_sample_ids=(
-                tuple(case.sample_id for case in frozen_plan) if frozen_plan is not None else None
+        stream = _collective_call(
+            lambda: _reader(
+                self.config,
+                self.topology,
+                index_field="test_index",
+                fixed_validation=True,
+                fixed_validation_sample_count=sample_count,
+                fixed_validation_sample_ids=(
+                    tuple(case.sample_id for case in frozen_plan)
+                    if frozen_plan is not None
+                    else None
+                ),
             ),
+            dist=self.dist,
+            topology=self.topology,
+            label="validation reader setup",
         )
         fixed_cases: list[tuple[int, Any, InferenceCase]] = []
         try:
+            if hasattr(stream, "prepare"):
+                stream.prepare(self.dist)
             for wave_index in range(num_waves):
                 batch = self._next_batch_collective(stream)
                 expected_slot = wave_index * int(self.topology.dp_world_size) + int(
@@ -796,10 +960,10 @@ class H3TrainingRuntime:
                         "plan_fingerprint": batch.plan_fingerprint,
                         "source_pixel_frames": 158,
                         "output_pixel_frames": 158,
-                        "train_latent_frames": 47,
-                        "rollout_latent_frames": 47,
-                        "generation_mode": "bidirectional",
-                        "sample_solver": "shifted-euler-data-ward",
+                        **generation,
+                        "dataset_source": batch.dataset_source,
+                        "dataset": batch.dataset_source or batch.sample_id.split("/")[0],
+                        "student_step": self.student_step,
                         "camera_translation_transform": "logd4",
                         "artifact_valid": True,
                     },
@@ -852,6 +1016,8 @@ class H3TrainingRuntime:
         try:
             for pass_name in self.config["validation"]["passes"]:
                 name = str(pass_name)
+                if name == "ema" and self.ema is None:
+                    continue
                 comparison_destination = public_validation_dir(
                     str(self.runtime_cfg["output_dir"]),
                     step=int(step),
@@ -902,14 +1068,15 @@ class H3TrainingRuntime:
                                     case,
                                     metadata={
                                         **dict(case.metadata),
+                                        "student_step": self.student_step,
                                         "num_inference_steps": int(
                                             self.config["validation"]["num_inference_steps"]
                                         ),
                                         "generation_pass": {
                                             "name": name,
                                             "weights": name,
-                                            "mode": "bidirectional",
-                                            "solver": "shifted-euler-data-ward",
+                                            "mode": generation["generation_mode"],
+                                            "solver": generation["sample_solver"],
                                             "num_inference_steps": int(
                                                 self.config["validation"]["num_inference_steps"]
                                             ),
@@ -923,6 +1090,10 @@ class H3TrainingRuntime:
                                     },
                                 )
                                 if conditioners is None:
+                                    import gc
+
+                                    gc.collect()
+                                    self.torch.cuda.empty_cache()
                                     conditioners = load_conditioners(
                                         self.model_cfg,
                                         device=self.device,
@@ -940,6 +1111,7 @@ class H3TrainingRuntime:
                                         self.config["validation"]["num_inference_steps"]
                                     ),
                                     reference_latents=batch.target_latents,
+                                    sample_solver=generation["sample_solver"],
                                 )
 
                                 class CachedAdapter:
@@ -994,6 +1166,7 @@ class H3TrainingRuntime:
                             )
                 finally:
                     conditioners = None
+                    self.torch.cuda.empty_cache()
                     restore_error = ""
                     if entered:
                         try:
@@ -1079,6 +1252,10 @@ class H3TrainingRuntime:
 
 
 def run_training(config: Mapping[str, Any]) -> int:
+    if config["train"]["stage"] == "stage2":
+        from .stage2_runtime import run_sgf_training
+
+        return run_sgf_training(config)
     runtime = H3TrainingRuntime(config)
     train = config["train"]
     checkpoint = config["checkpoint"]
@@ -1087,17 +1264,42 @@ def run_training(config: Mapping[str, Any]) -> int:
         max_steps=int(train["max_steps"]),
         grad_accum=int(train["gradient_accumulation_steps"]),
         save_every=int(checkpoint.get("save_every_steps", 0)),
+        save_steps=tuple(int(step) for step in checkpoint.get("save_steps", ())),
         validate_every=int(validation.get("validate_every_steps", 0)),
         validation_steps=(
             (int(validation["smoke_step"]),) if int(validation["smoke_step"]) > 0 else ()
         ),
     )
-    sink = (
+    writer = (
         JsonlEventSink(Path(str(config["runtime"]["output_dir"])) / "training-events.jsonl")
         if runtime.is_main
         else None
     )
-    TrainingEngine(runtime, policy, event_sink=sink).run()
+
+    def sink(event: Mapping[str, Any]) -> None:
+        if writer is None:
+            return
+        if event["event"] == "optimizer_step":
+            runtime.torch.cuda.synchronize(runtime.device)
+            event = {
+                **event,
+                "compute_time_s": time.monotonic() - runtime._step_started,
+                "lr": float(runtime.optimizer.param_groups[0]["lr"]),
+                "peak_allocated_gib": runtime.torch.cuda.max_memory_allocated(runtime.device)
+                / (1024**3),
+            }
+            loss = event["losses"][str(train["objective"])]
+            print(
+                f"[h3-{runtime.stage}] step={event['step']} loss={loss:.8f} "
+                f"lr={event['lr']:.3e} compute_time_s={event['compute_time_s']:.2f}",
+                flush=True,
+            )
+        writer(event)
+
+    try:
+        TrainingEngine(runtime, policy, event_sink=sink).run()
+    finally:
+        runtime.reader.close()
     return 0
 
 
@@ -1125,13 +1327,26 @@ def _load_lora_checkpoint(
     weight_source: str,
     broadcast: bool = False,
 ) -> str:
-    """Load one SolarWM LoRA sidecar without inheriting training state."""
+    """Load a Stage0.5 LoRA package without inheriting training state."""
 
     source = str(weight_source).strip().lower()
     if source not in {"live", "ema"}:
         raise BackendContractError("H3 inference weight_source must be live or ema")
     checkpoint = Path(path)
     root = checkpoint if checkpoint.is_dir() else checkpoint.parent
+    if (root / "checkpoint-manifest.json").is_file():
+        from .weights import load_initial_weights
+
+        identity = load_initial_weights(
+            {"path": str(root), "stage": "stage0p5", "weight_source": source}, lora
+        )
+        if broadcast:
+            import torch.distributed as dist
+
+            if dist.is_available() and dist.is_initialized():
+                for parameter in lora.parameter_by_key.values():
+                    dist.broadcast(parameter.detach(), src=0)
+        return identity
     sidecar = root / (
         "adapter_model.safetensors" if source == "live" else "adapter_model_ema.safetensors"
     )
@@ -1152,12 +1367,17 @@ def _load_lora_checkpoint(
 
 
 def run_inference(config: Mapping[str, Any]) -> int:
+    if config.get("inference", {}).get("length_policy") == "source":
+        from .full_inference import run_source_length_inference
+
+        return run_source_length_inference(config)
     torch, _diffusers, _transformers = require_h3_runtime()
     import torch.distributed as dist
 
     from .fsdp import initialize_distributed, wrap_h3_fsdp
     from .lora import inject_h3_lora
 
+    stage = str(config["train"]["stage"])
     distributed = config.get("distributed", {})
     configured_sp = int(distributed.get("sequence_parallel_size", 1))
     topology = _topology(sp_size=configured_sp, require_torchrun=True)
@@ -1177,6 +1397,13 @@ def run_inference(config: Mapping[str, Any]) -> int:
     identity = rng_identity("minimax_h3", int(config["data"].get("seed", 42)), topology)
     seed_process(identity.model_init_seed)
     modules = load_transformer(config["model"], device=device)
+    if stage == "stage1":
+        modules.transformer.enable_anyflow(float(config["train"]["anyflow_gate"]))
+        modules.fp32_fsdp_units = (
+            *modules.fp32_fsdp_units,
+            modules.transformer.delta_embedding.linear_1,
+            modules.transformer.delta_embedding.linear_2,
+        )
     modules.transformer.eval().requires_grad_(False)
     base_model = _base_model_load_receipt(config["model"], modules.transformer)
     model, lora = inject_h3_lora(
@@ -1202,7 +1429,10 @@ def run_inference(config: Mapping[str, Any]) -> int:
     )
     fixed_cases: list[tuple[int, Any, InferenceCase]] = []
     try:
-        silence, silence_profile = load_silence_latents(str(config["data"]["silence_latents_path"]))
+        silence, silence_profile = load_silence_latents(
+            str(config["data"]["silence_latents_path"]),
+            pixel_frames=153 if stage == "stage1" else 158,
+        )
         _assert_encoder_silence_identity(stream.encoder_profile, silence_profile)
         expected_contract = _checkpoint_contract(
             encoder_profile=stream.encoder_profile,
@@ -1216,7 +1446,23 @@ def run_inference(config: Mapping[str, Any]) -> int:
         ).strip()
         checkpoint_cfg = config.get("checkpoint", {})
         checkpoint_format = str(checkpoint_cfg.get("format", "solarwm")).strip().lower()
-        if checkpoint_path and checkpoint_format == "solarwm_lora":
+        if checkpoint_path and stage != "stage0p5":
+            from .weights import load_initial_weights
+
+            weights_id = _collective_call(
+                lambda: load_initial_weights(
+                    {
+                        "path": checkpoint_path,
+                        "stage": stage,
+                        "weight_source": checkpoint_cfg.get("weight_source", "live"),
+                    },
+                    lora,
+                ),
+                dist=dist,
+                topology=topology,
+                label="inference checkpoint restore",
+            )
+        elif checkpoint_path and checkpoint_format == "solarwm_lora":
             weights_id = _collective_call(
                 lambda: _load_lora_checkpoint(
                     checkpoint_path,
@@ -1243,6 +1489,8 @@ def run_inference(config: Mapping[str, Any]) -> int:
             )
         else:
             weights_id = _base_weights_label(config["model"])
+        if hasattr(stream, "prepare"):
+            stream.prepare(dist)
         for wave_index in range(num_waves):
             batch = _collective_call(
                 stream.next,
@@ -1276,13 +1524,18 @@ def run_inference(config: Mapping[str, Any]) -> int:
                 camera_fingerprint=camera_fingerprint(batch),
                 metadata={
                     "key": batch.sample_id,
+                    "dataset": batch.dataset_source or batch.sample_id.split("/")[0],
                     "plan_fingerprint": batch.plan_fingerprint,
                     "source_pixel_frames": 158,
                     "output_pixel_frames": 158,
-                    "train_latent_frames": 47,
-                    "rollout_latent_frames": 47,
-                    "generation_mode": "bidirectional",
-                    "sample_solver": "shifted-euler-data-ward",
+                    "train_latent_frames": 45 if stage == "stage1" else 47,
+                    "rollout_latent_frames": 47 if stage == "stage0p5" else 50,
+                    "generation_mode": "bidirectional" if stage == "stage0p5" else "autoregressive",
+                    "sample_solver": {
+                        "stage0p5": "shifted-euler-data-ward",
+                        "stage1": "flowmap",
+                        "stage2": "self_forcing",
+                    }[stage],
                     "camera_translation_transform": "logd4",
                     "artifact_valid": True,
                 },
@@ -1300,7 +1553,19 @@ def run_inference(config: Mapping[str, Any]) -> int:
             fixed_cases.append((wave_index, batch, case))
     finally:
         stream.close()
-    core = H3Stage0p5Core(model, silence, device)
+    if stage == "stage1":
+        from .stage1 import H3Stage1Core
+
+        validation_silence, _ = load_silence_latents(
+            str(config["data"]["silence_latents_path"]), pixel_frames=170
+        )
+        core = H3Stage1Core(model, silence, device, config["train"], validation_silence)
+    elif stage == "stage2":
+        from .stage2 import H3SGFCore
+
+        core = H3SGFCore(model, silence, device)
+    else:
+        core = H3Stage0p5Core(model, silence, device)
     conditioners = None
     comparison_destination = Path(str(config["runtime"]["output_dir"])) / "inference"
     for wave_index, batch, case in fixed_cases:
@@ -1333,6 +1598,7 @@ def run_inference(config: Mapping[str, Any]) -> int:
                     weights_id=weights_id,
                     num_inference_steps=int(config["validation"]["num_inference_steps"]),
                     reference_latents=batch.target_latents,
+                    sample_solver=str(case.metadata["sample_solver"]),
                 )
 
                 class CachedAdapter:

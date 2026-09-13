@@ -191,6 +191,64 @@ def test_raw_online_training_uses_the_shared_shard_prefetcher(monkeypatch) -> No
     assert calls == ["build", "close"]
 
 
+def test_raw_online_reader_resume_preserves_the_next_plans(monkeypatch) -> None:
+    rows = []
+    for ordinal in range(12):
+        values = _raw_row()
+        values.update(
+            {
+                "sample_id": f"sample-{ordinal}",
+                "key": f"key-{ordinal}",
+                "shard": f"dataset/shards/part-{ordinal:05d}.tar",
+            }
+        )
+        rows.append(IndexRow.from_mapping(ordinal, values))
+
+    class Shards:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(ltx_raw, "read_index", lambda _path: tuple(rows))
+    monkeypatch.setattr(ltx_raw, "resolve_index_path", lambda *_args: Path("/index.jsonl"))
+    monkeypatch.setattr(ltx_raw, "verified_resolver_from_config", lambda _data: object())
+    monkeypatch.setattr(ltx_raw, "TarShardReader", Shards)
+    monkeypatch.setattr(ltx_raw, "RawSampleReader", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(ltx_raw, "build_shard_prefetcher", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ltx_raw.RawIndexedStream, "_materialize", lambda _self, plan: plan)
+    monkeypatch.setattr(
+        ltx_raw.Topology,
+        "from_environ",
+        classmethod(lambda cls, _sp: Topology(1, 0, 1, 0, sp_size=1)),
+    )
+    config = {
+        "data": {
+            "index": "index.jsonl",
+            "transport": {"kind": "gcs", "root": "gs://dataset"},
+            "num_workers": 2,
+            "seed": 42,
+            "shuffle_buffer": 4,
+            "partition_mode": "global_occurrence",
+        },
+        "distributed": {"sequence_parallel_size": 1},
+    }
+
+    uninterrupted = RawIndexedStream(config, logical_dp=True)
+    resumed = RawIndexedStream(config, logical_dp=True)
+    try:
+        for _ in range(7):
+            uninterrupted.next()
+        resumed.load_state_dict(uninterrupted.state_dict())
+        expected = [uninterrupted.next() for _ in range(20)]
+        observed = [resumed.next() for _ in range(20)]
+        assert observed == expected
+    finally:
+        uninterrupted.close()
+        resumed.close()
+
+
 def test_raw_case_fingerprint_binds_source_controls(tmp_path: Path) -> None:
     first = _raw_row()
     index = tmp_path / "index.jsonl"

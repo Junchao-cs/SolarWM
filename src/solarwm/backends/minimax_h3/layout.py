@@ -11,7 +11,7 @@ infer camera rows from token tags.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 
 import numpy as np
 
@@ -98,6 +98,19 @@ class H3PackedLayout:
     @property
     def camera_indices(self) -> np.ndarray:
         return self.camera_video_indices
+
+    def to(self, device: object) -> H3PackedLayout:
+        """Transfer structural arrays to torch without changing the public layout."""
+        import torch
+
+        values = {}
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if isinstance(value, np.ndarray):
+                values[item.name] = torch.from_numpy(value).to(device)
+            elif isinstance(value, torch.Tensor):
+                values[item.name] = value.to(device)
+        return replace(self, **values)
 
     def transformer_kwargs(self) -> dict[str, np.ndarray]:
         """Return the five native structural arguments expected by H3."""

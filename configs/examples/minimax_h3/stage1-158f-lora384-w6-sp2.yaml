@@ -1,0 +1,150 @@
+schema: solarwm.run.v1
+action: train
+name: minimax-h3-stage1-158f-lora384-w6-sp2
+model:
+  family: minimax_h3
+  architecture: minimax-h3-33b
+  checkpoint_path: /path/to/models/MiniMax-H3
+  transformer_subfolder: transformer
+  transformer_device_map: null
+  training_mode: lora
+  torch_dtype: bfloat16
+  load_conditioners: false
+  camera_attention_mode: fused_prope
+  attention_head_dim: 128
+  camera_prope_head_dim_start: 96
+  camera_prope_head_dim_end: 128
+  camera_translation_transform: logd4
+  camera_intrinsics_mode: wan_fixed
+  latent_channels: 24
+  latent_height: 48
+  latent_width: 84
+  rows_per_latent: 1008
+  num_frames_per_block: 5
+  max_prior_clean_chunks: 5
+  attention_backend: flex
+  adapter:
+    type: lora
+    target: block_qkvo_ffn
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+    bias: none
+    dtype: bfloat16
+    expected_target_linear_modules: 312
+    expected_trainable_parameters: 2075394048
+data:
+  input_mode: preencoded
+  format: webdataset
+  dataset_name: h3_preencoded_wds
+  transport:
+    kind: local
+    root: /path/to/SolarWM-Data/releases-v1
+  index_root: /path/to/SolarWM-Data/releases-v1
+  train_index: recipes/clean-158f-h3/latent-wds/minimax-h3-158f-768p-nomind-v1/train-index.jsonl.gz
+  raw_test_index: recipes/clean-153f/raw-wds/test-index.jsonl.gz
+  test_index: recipes/clean-158f-h3/latent-wds/minimax-h3-158f-768p-nomind-v1/test-index.jsonl.gz
+  silence_latents_path: /path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/h3_silence_153_158_170.safetensors
+  encoder_contract_path: /path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/encoder_contract.json
+  preencode_version: h3.158f.v1
+  pixel_frames: 158
+  encoded_latents: 47
+  train_target_latents: 45
+  height: 768
+  width: 1344
+  latent_channels: 24
+  latent_height: 48
+  latent_width: 84
+  frame_sampling: contiguous
+  source_fps_policy: audit_only
+  random_start: false
+  resolution_label: default
+  max_relative_translation: 20.0
+  max_camera_absolute_value: 20.0
+  seed: 42
+  num_workers: 4
+  prefetch_factor: 2
+  gcs_prefetch_shards: 32
+distributed:
+  world_size: 256
+  sequence_parallel_size: 2
+  context_parallel_size: 1
+  rank_partition: node_shard
+  sp_peers_share_sample: true
+  sp_peers_share_rng: true
+train:
+  stage: stage1
+  causal_mode: teacher_forcing
+  objective: anyflow_forward_map
+  precision: bfloat16
+  micro_batch_size: 1
+  gradient_accumulation_steps: 1
+  global_batch_size: 128
+  max_steps: 30000
+  video_timestep_shift: 12.0
+  audio_timestep_shift: 3.0
+  keyframe_noise_augmentation: 0.999
+  audio_loss_weight: 0.0
+  optimizer:
+    name: fp32_master_adamw
+    learning_rate: 3.0e-05
+    betas:
+    - 0.9
+    - 0.95
+    epsilon: 1.0e-08
+    weight_decay: 0.01
+    gradient_clip: 1.0
+    warmup_steps: 1000
+    min_lr_ratio: 0.1
+  fsdp:
+    sharding_strategy: FULL_SHARD
+    activation_checkpointing: true
+    preserve_checkpoint_dtype: true
+    param_dtype: null
+    reduce_dtype: float32
+    buffer_dtype: null
+  objective_variant: v1_5
+  anyflow_gate: 0.25
+  deltatime_type: r
+  finite_difference_epsilon: 5.0
+  diffusion_ratio: 0.5
+  consistency_ratio: 0.25
+  weight_type: gaussian
+validation:
+  sample_count: 128
+  selection_seed: 42
+  noise_seed: 42
+  pixel_frames: 158
+  latent_frames: 47
+  fps: 24
+  num_inference_steps: 4
+  max_relative_translation: 20.0
+  max_camera_absolute_value: 20.0
+  validate_every_steps: 1000
+  smoke_step: 20
+  passes:
+  - live
+  - ema
+  rollout_latents: 50
+  decode_latents: 47
+  camera_frames: 170
+  balance_by_dataset: true
+checkpoint:
+  save_every_steps: 1000
+  save_optimizer: true
+  ema:
+    enabled: true
+    dtype: float32
+    sharded: true
+    decay: 0.999
+    start_step: 0
+    update_every_steps: 1
+  save_steps:
+  - 20
+  initialization:
+    student:
+      path: /path/to/SolarWM-models/SolarWM-h3-33B-bid-stage0p5-158f
+      weight_source: ema
+      stage: stage0p5
+runtime:
+  output_dir: outputs/minimax-h3-stage1-158f-lora384-w6-sp2

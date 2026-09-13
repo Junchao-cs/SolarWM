@@ -52,6 +52,8 @@ _SUPPORTED = frozenset(
         # Independent backbones; config label FM maps to their native flow.
         Route("ltx25_video", "stage0p5", "bidirectional", "native_rectified_flow"),
         Route("minimax_h3", "stage0p5", "bidirectional", "flow_matching"),
+        Route("minimax_h3", "stage1", "teacher_forcing", "anyflow_forward_map", "v1_5"),
+        Route("minimax_h3", "stage2", "self_gradient_forcing", "flow_matching"),
     }
 )
 

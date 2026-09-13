@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import math
 import threading
-from collections.abc import Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
+import time
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +17,118 @@ from solarwm.errors import DataContractError
 
 from .index import IndexRow
 from .sampling import CanonicalSampler, SamplePlan
-from .transport import ShardResolver
+from .transport import GCSDownloadTimeout, GCSResolver, ObjectIdentity, ShardResolver
+
+
+@dataclass(frozen=True)
+class CacheWarmupResult:
+    shards: int
+    bytes: int
+    elapsed_seconds: float
+
+
+def warm_shard_cache(
+    rows: Sequence[IndexRow],
+    resolver: ShardResolver,
+    *,
+    max_bytes: int,
+    max_workers: int = 4,
+    timeout_seconds: float = 7200.0,
+    progress: Callable[[int, int], None] | None = None,
+) -> CacheWarmupResult:
+    """Optionally materialize an explicit working set before training starts.
+
+    This preparation step is independent of models, stages and sampling. The
+    caller supplies the desired index (or a node's planned subset); no reader
+    cursors or RNG states are created or advanced. Ordinary training does not
+    call it. A working set larger than the cache is rejected before any I/O,
+    since evicting its beginning while warming its end would not prepare it.
+    """
+
+    if (
+        isinstance(max_workers, bool)
+        or not isinstance(max_workers, int)
+        or max_workers < 1
+        or isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 1
+        or not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0
+    ):
+        raise DataContractError("cache warmup requires positive workers, capacity and timeout")
+    if max_bytes > int(getattr(resolver, "max_bytes", max_bytes)):
+        raise DataContractError("cache warmup capacity exceeds the resolver cache capacity")
+    unique: dict[str, IndexRow] = {}
+    sizes: dict[str, int] = {}
+    for row in rows:
+        size = ObjectIdentity.from_row(row).size
+        if row.shard in sizes and sizes[row.shard] != size:
+            raise DataContractError(f"cache warmup has conflicting sizes for {row.shard}")
+        unique.setdefault(row.shard, row)
+        sizes[row.shard] = size
+    total_bytes = sum(sizes.values())
+    if total_bytes > max_bytes:
+        raise DataContractError(
+            f"cache warmup working set needs {total_bytes} bytes, capacity is {max_bytes}; "
+            "provide a smaller planned index or a larger cache"
+        )
+    started = time.monotonic()
+    deadline = started + timeout_seconds
+    stopped = threading.Event()
+
+    def resolve(row: IndexRow) -> Path:
+        while True:
+            if stopped.is_set():
+                raise GCSDownloadTimeout("cache warmup cancelled")
+            if time.monotonic() >= deadline:
+                raise GCSDownloadTimeout(f"cache warmup time budget exhausted at {row.shard}")
+            try:
+                path = (
+                    resolver.resolve(row, deadline=deadline)
+                    if isinstance(resolver, GCSResolver)
+                    else resolver.resolve(row)
+                )
+                if time.monotonic() >= deadline:
+                    raise GCSDownloadTimeout(f"cache warmup time budget exhausted at {row.shard}")
+                return path
+            except GCSDownloadTimeout:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                stopped.wait(min(1.0, remaining))
+
+    pending: set[Future[Path]] = set()
+    iterator = iter(unique.values())
+    completed = 0
+    pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="solarwm-cache-warmup")
+    try:
+        for _ in range(min(max_workers, len(unique))):
+            pending.add(pool.submit(resolve, next(iterator)))
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise GCSDownloadTimeout("cache warmup time budget exhausted")
+            done, pending = wait(
+                pending,
+                timeout=remaining,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                raise GCSDownloadTimeout("cache warmup time budget exhausted")
+            for future in done:
+                future.result()
+                completed += 1
+                if progress is not None:
+                    progress(completed, len(unique))
+                row = next(iterator, None)
+                if row is not None:
+                    pending.add(pool.submit(resolve, row))
+    finally:
+        stopped.set()
+        for future in pending:
+            future.cancel()
+        pool.shutdown(wait=True, cancel_futures=True)
+    return CacheWarmupResult(completed, total_bytes, time.monotonic() - started)
 
 
 def shard_prefetch_depth(data: Mapping[str, Any]) -> int:
@@ -131,7 +246,31 @@ class ShardPrefetcher:
         if future is None:
             return
         try:
-            future.result()
+            # A resolver's deadline starts only when its executor task starts.
+            # Include queue time here: a demanded shard must not wait through
+            # the transfer budgets of every speculative shard ahead of it.
+            future.result(timeout=float(getattr(self.resolver, "max_elapsed_seconds", 300.0)))
+        except FutureTimeout as exc:
+            if not future.done():
+                # Cancel queued work, but retain a running task so a later
+                # prepare cannot create a second download for the same shard.
+                if future.cancel():
+                    with self._lock:
+                        if self._futures.get(row.shard) is future:
+                            self._futures.pop(row.shard, None)
+                raise GCSDownloadTimeout(
+                    f"GCS prefetch wait exceeded its time budget for {row.shard}"
+                ) from exc
+            with self._lock:
+                if self._futures.get(row.shard) is future:
+                    self._futures.pop(row.shard, None)
+            # An underlying resolver TimeoutError follows the ordinary
+            # speculative-error path; the authoritative reader still retries.
+        except GCSDownloadTimeout:
+            with self._lock:
+                if self._futures.get(row.shard) is future:
+                    self._futures.pop(row.shard, None)
+            raise
         except Exception:
             with self._lock:
                 if self._futures.get(row.shard) is future:
@@ -188,7 +327,9 @@ def build_shard_prefetcher(
 
 
 __all__ = [
+    "CacheWarmupResult",
     "ShardPrefetcher",
     "build_shard_prefetcher",
     "shard_prefetch_depth",
+    "warm_shard_cache",
 ]

@@ -17,6 +17,7 @@ encode directly from source videos.
 | Inspect schemas or test the reader | Main SolarWM-Data repository only |
 | Access the full video corpus, train online, or create new latents | Main repository plus `raw-wds/` |
 | Run periodic validation or standalone inference | The payload referenced by the selected validation/inference index |
+| Run H3 inference at the original test-video length | [Standalone test set v1](#standalone-test-set) |
 
 The main release repository is available on
 [Hugging Face](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data) and
@@ -46,12 +47,16 @@ training corpus.
 
 Each latent generation is published in a separate dataset repository. Links
 are maintained in the [latent-WDS release list](latent-wds.md), including the
-Wan2.2-5B 153f generation used by the quickstart.
+MiniMax-H3 158f generation used by the [quickstart](quickstart.md).
 
 Preserve the downloaded generation at
 `$SOLAR_DATA_ROOT/latent-wds/<generation>/`. The main SolarWM-Data repository
 contains the matching recipe indexes; no raw-WDS download is needed for a
 latent-only training run.
+
+H3 validation selects cases automatically. Stage1 additionally reads the
+raw test cameras to cover the complete rollout; Stage2 uses latent-WDS only.
+See the [H3 guide](backends/minimax-h3.md).
 
 ## Getting raw-WDS
 
@@ -101,6 +106,24 @@ applicable dataset terms. Approved applicants will receive download
 instructions by email. Submission does not replace any upstream license or
 usage restriction.
 
+## Standalone test set
+
+The [SolarWM standalone test set v1](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data_test-set-v1)
+contains raw test videos, captions, and full camera trajectories. Accept its
+access terms on Hugging Face and authenticate before downloading:
+
+```bash
+hf auth login
+export SOLAR_TEST_ROOT=/path/to/SolarWM-Data_test-set-v1
+hf download junchaoh-cs/SolarWM-Data_test-set-v1 \
+  --repo-type dataset --local-dir "$SOLAR_TEST_ROOT"
+```
+
+Keep `indexes/all.jsonl.gz` and `wds/` under this root. Use it as
+`inference.dataset_root` for [full-length H3 inference](backends/minimax-h3.md#full-length-stage2-inference).
+This standalone package is separate from `releases-v1/test-set/`, which holds
+the main release's test-index controls.
+
 ## Portable local layout
 
 After combining the controls and the payloads you need, the relevant portion
@@ -122,3 +145,43 @@ SolarWM-Data/
 Index rows use paths relative to `releases-v1/`; the same assembled tree can be
 mounted at any local path. See the [data contract](data-contract.md) for the
 runtime storage and integrity rules.
+
+The standalone test set has its own root:
+
+```text
+SolarWM-Data_test-set-v1/
+|-- indexes/all.jsonl.gz
+`-- wds/
+```
+
+## Optional cache warmup
+
+Training uses on-demand reads and configured background prefetch by default.
+To prepare shards before starting training, use this optional command with an
+explicit recipe index or a node-specific planned subset:
+
+```bash
+solarwm data warm-cache /path/to/planned-index.jsonl.gz \
+  --root gs://your-bucket/SolarWM-Data/releases-v1 \
+  --cache-dir /path/to/solarwm-cache --max-gib 4096
+```
+
+Use the same cache directory and capacity for training. This command is shared
+by all backends and stages. It uses four download workers, reuses existing cache
+entries, and retries transient timeouts for up to two hours. It never advances
+training RNGs or sampler cursors. The working set must fit in the cache;
+oversized indexes are rejected before download. For a resume, provide the
+upcoming working set rather than starting again from the beginning. Frozen
+validation shards can be warmed separately into the validation cache. Source
+data is never modified. Omitting this step preserves the normal training path.
+
+For Wan training over GCS, `runtime.data_cache_dir` and
+`runtime.data_cache_max_gib` can override the training cache without changing
+the portable data transport settings. Set both `runtime.validation_cache_dir`
+and `runtime.validation_cache_max_gib` to isolate frozen validation reads.
+Runtime cache overrides are rejected for local data roots.
+
+GCS reads share one deadline for lock waiting and transfer. In the Wan
+preencoded reader, a timed-out occurrence is recorded as skipped; a later
+occurrence can retry the shard. Ranks exchange read failures before entering
+model collectives.

@@ -21,14 +21,19 @@ from solarwm.training.engine import (
 from solarwm.training.schedule import make_warmup_cosine
 
 from ..objectives import first_frame_loss_mask, weighted_masked_mse
-from .checkpoint import load_weights_only_checkpoint
+from .checkpoint import load_full_checkpoint, load_weights_only_checkpoint
 from .codec import Wan5BOnlineCodec
-from .components import build_online_components
+from .components import (
+    build_diffusion_architecture,
+    build_online_codec_components,
+    build_online_components,
+)
 from .data import build_raw_dataloader
 from .distributed import cleanup_torchrun, initialize_torchrun, wrap_transformer_fsdp
 from .readiness import probe_runtime
 from .stage0p5 import (
     Wan5BStage0p5Runtime,
+    _bind_full_resume_initialization,
     _rng_identity,
     deterministic_i2v_drop_mask,
     expand_timesteps_to_tokens,
@@ -198,17 +203,28 @@ def build_stage1_runtime(config: Mapping[str, Any]) -> Wan5BStage1Runtime:
             "Wan torchrun world size differs from distributed.world_size: "
             f"{topology.raw_world_size} != {declared_world}"
         )
+    checkpoint = config["checkpoint"]
+    full_resume = str(checkpoint.get("mode")) == "full_resume"
     probe_runtime(
         config,
         family="wan22_ti2v_5b",
         require_cuda=True,
+        require_transformer_weights=not full_resume,
         validate_index_contents=False,
     ).require_ready()
 
     initialization_seed = model_init_seed("wan22_ti2v_5b", int(config["data"]["seed"]))
     torch.manual_seed(initialization_seed)
     torch.cuda.manual_seed_all(initialization_seed)
-    diffusion, text_encoder, vae, _ = build_online_components(config)
+    if full_resume:
+        diffusion = build_diffusion_architecture(config)
+        text_encoder, vae = build_online_codec_components(config)
+        initialization_receipt = {
+            "schema": "solarwm.wan22-full-resume-initialization.v1",
+            "initialization_id": "pending:full-resume",
+        }
+    else:
+        diffusion, text_encoder, vae, _ = build_online_components(config)
     device = torch.device("cuda", topology.local_rank)
     text_encoder.to(device)
     vae.to(device)
@@ -229,12 +245,21 @@ def build_stage1_runtime(config: Mapping[str, Any]) -> Wan5BStage1Runtime:
         total_steps=int(config["train"]["max_steps"]),
         min_lr_ratio=float(optimizer_config.get("min_lr_ratio", 0.1)),
     )
-    checkpoint = config["checkpoint"]
-    restored = load_weights_only_checkpoint(
-        config=config,
-        path=str(checkpoint["path"]),
-        diffusion=diffusion,
-    )
+    restored_weights = None
+    if not full_resume:
+        restored_weights = load_weights_only_checkpoint(
+            config=config,
+            path=str(checkpoint["path"]),
+            diffusion=diffusion,
+        )
+        initialization_receipt = {
+            "schema": "solarwm.wan22-weights-only-initialization.v1",
+            "initialization_id": restored_weights.identity,
+            "source_step": restored_weights.source_step,
+            "source_path": str(restored_weights.path),
+            "standalone": restored_weights.standalone,
+            "weights": "ema",
+        }
     ema_config = config["train"]["ema"]
     ema = ShardedEMA(
         diffusion.module,
@@ -255,24 +280,30 @@ def build_stage1_runtime(config: Mapping[str, Any]) -> Wan5BStage1Runtime:
         frame_sequence_length=int(config["model"]["frame_sequence_length"]),
     )
     loader = build_raw_dataloader(config, topology)
-    return Wan5BStage1Runtime(
+    runtime = Wan5BStage1Runtime(
         config,
         diffusion=diffusion,
         codec=codec,
-        batches=iter(loader),
+        batches=loader,
         optimizer=optimizer,
         lr_scheduler=scheduler,
         ema=ema,
         topology=topology,
-        initialization_receipt={
-            "schema": "solarwm.wan22-weights-only-initialization.v1",
-            "initialization_id": restored.identity,
-            "source_step": restored.source_step,
-            "source_path": str(restored.path),
-            "standalone": restored.standalone,
-            "weights": "ema",
-        },
+        initialization_receipt=initialization_receipt,
     )
+    if full_resume:
+        restored = load_full_checkpoint(
+            config=config,
+            path=str(checkpoint["path"]),
+            diffusion=runtime.diffusion,
+            optimizer=runtime.optimizer,
+            scheduler=runtime.lr_scheduler,
+            ema=runtime.ema,
+            reader=runtime.data,
+            device=runtime.device,
+        )
+        _bind_full_resume_initialization(runtime, restored)
+    return runtime
 
 
 def run_stage1_training(config: Mapping[str, Any]) -> int:
@@ -283,6 +314,7 @@ def run_stage1_training(config: Mapping[str, Any]) -> int:
         raise BackendContractError(
             f"{_TORCHRUN_OWNER_ENV} must be backend or caller, got {owner!r}"
         )
+    runtime = None
     try:
         runtime = build_stage1_runtime(config)
         train = config["train"]
@@ -306,6 +338,10 @@ def run_stage1_training(config: Mapping[str, Any]) -> int:
             )
         return 0
     finally:
+        if runtime is not None:
+            close = getattr(runtime, "close", None)
+            if callable(close):
+                close()
         if owner == "backend":
             cleanup_torchrun()
 

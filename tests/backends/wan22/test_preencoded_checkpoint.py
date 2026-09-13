@@ -415,34 +415,244 @@ def test_current_preencode_schema_uses_readable_tensor_contract() -> None:
 def test_preencoded_dataloader_materializes_the_index_before_worker_fork(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    torch = pytest.importorskip("torch")
     from solarwm.backends.wan22.runtime import preencoded
+    from solarwm.data.index import IndexRow
 
-    rows = (object(),)
-    calls = {"read": 0, "worker_rows": None}
+    rows = (
+        IndexRow.from_mapping(
+            0,
+            {
+                "sample_id": "sample",
+                "key": "sample",
+                "shard": "shards/part-000000.tar",
+                "num_frames": 81,
+                "fps": 16.0,
+                "start_frame": 0,
+            },
+        ),
+    )
+    calls = {"read": 0}
 
     def read_once(_path: object) -> tuple[object, ...]:
         calls["read"] += 1
         return rows
 
-    def batches(
-        _config: object,
-        _topology: object,
-        **kwargs: object,
-    ) -> object:
-        calls["worker_rows"] = kwargs["rows"]
-        yield {"value": torch.tensor(1)}
-
     monkeypatch.setattr(preencoded, "resolve_index_path", lambda *_args: object())
     monkeypatch.setattr(preencoded, "read_index", read_once)
     monkeypatch.setattr(preencoded, "_rows_with_fixed_starts", tuple)
-    monkeypatch.setattr(preencoded, "iter_preencoded_batches", batches)
+    monkeypatch.setattr(preencoded, "resolver_from_config", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(preencoded, "TarShardReader", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(preencoded, "RawSampleReader", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(preencoded, "build_shard_prefetcher", lambda *_args, **_kwargs: None)
     loader = preencoded.build_preencoded_dataloader(
-        {"data": {"num_workers": 0, "train_index": "index.jsonl.gz"}},
-        object(),
+        {
+            "data": {
+                "num_workers": 1,
+                "train_index": "index.jsonl.gz",
+                "pixel_frames": 81,
+                "fps": 16.0,
+                "seed": 42,
+                "shuffle_buffer": 1,
+                "partition_mode": "global_occurrence",
+                "transport": {"root": "/read-only-data"},
+            },
+            "train": {"micro_batch_size": 1},
+        },
+        SimpleNamespace(
+            dp_rank=0,
+            dp_world_size=1,
+            node_id=0,
+            node_count=1,
+            local_dp_rank=0,
+            local_dp_world_size=1,
+            local_rank=0,
+        ),
     )
-    assert next(iter(loader))["value"].item() == 1
-    assert calls == {"read": 1, "worker_rows": rows}
+    assert loader.rows == rows
+    assert calls == {"read": 1}
+
+
+def test_stateful_preencoded_reader_keeps_multiworker_prefetch_and_resumes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from solarwm.backends.wan22.runtime import preencoded
+    from solarwm.data.index import IndexRow
+
+    torch = pytest.importorskip("torch")
+    rows = tuple(
+        IndexRow.from_mapping(
+            ordinal,
+            {
+                "sample_id": f"sample-{ordinal}",
+                "key": f"sample-{ordinal}",
+                "shard": f"shards/part-{ordinal // 2:06d}.tar",
+                "num_frames": 81,
+                "fps": 16.0,
+                "start_frame": 0,
+            },
+        )
+        for ordinal in range(12)
+    )
+
+    class Shards:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> Shards:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+    class Reader:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        @staticmethod
+        def materialize(plan: SamplePlan) -> SamplePlan:
+            return plan
+
+    monkeypatch.setattr(preencoded, "resolve_index_path", lambda *_args: "train.jsonl")
+    monkeypatch.setattr(preencoded, "read_index", lambda *_args: rows)
+    monkeypatch.setattr(preencoded, "_rows_with_fixed_starts", tuple)
+    monkeypatch.setattr(preencoded, "resolver_from_config", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(preencoded, "TarShardReader", Shards)
+    monkeypatch.setattr(preencoded, "RawSampleReader", Reader)
+    monkeypatch.setattr(preencoded, "build_shard_prefetcher", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(preencoded, "decode_preencoded_sample", lambda plan, _config: plan)
+    monkeypatch.setattr(
+        preencoded,
+        "collate_preencoded_samples",
+        lambda plans: {
+            "sample_ids": tuple(plan.sample_id for plan in plans),
+            "start_frames": tuple(plan.start_frame for plan in plans),
+        },
+    )
+    config = {
+        "data": {
+            "num_workers": 2,
+            "prefetch_factor": 3,
+            "train_index": "train.jsonl",
+            "pixel_frames": 81,
+            "fps": 16.0,
+            "seed": 42,
+            "shuffle_buffer": 2,
+            "partition_mode": "global_occurrence",
+            "transport": {"root": "/read-only-data"},
+        },
+        "train": {"micro_batch_size": 1},
+    }
+    topology = SimpleNamespace(
+        dp_rank=0,
+        dp_world_size=1,
+        node_id=0,
+        node_count=1,
+        local_dp_rank=0,
+        local_dp_world_size=1,
+        local_rank=0,
+    )
+
+    uninterrupted = preencoded.build_preencoded_dataloader(config, topology)
+    cpu_rng = torch.random.get_rng_state().clone()
+    uninterrupted._start_loader()
+    assert torch.equal(torch.random.get_rng_state(), cpu_rng)
+    for _ in range(7):
+        next(uninterrupted)
+    assert uninterrupted._loader.num_workers == 2
+    assert uninterrupted._loader.prefetch_factor == 3
+    state = uninterrupted.checkpoint_state_dict()
+    assert uninterrupted._iterator is None
+    expected = [next(uninterrupted) for _ in range(13)]
+    uninterrupted.close()
+
+    resumed = preencoded.build_preencoded_dataloader(config, topology)
+    resumed.load_state_dict(state)
+    actual = [next(resumed) for _ in range(13)]
+    resumed.close()
+
+    assert actual == expected
+
+
+def test_stateful_preencoded_reader_fails_after_an_entire_timed_out_epoch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from solarwm.backends.wan22.runtime import preencoded
+    from solarwm.data.index import IndexRow
+    from solarwm.data.transport import GCSDownloadTimeout
+
+    pytest.importorskip("torch")
+    rows = tuple(
+        IndexRow.from_mapping(
+            ordinal,
+            {
+                "sample_id": f"sample-{ordinal}",
+                "key": f"sample-{ordinal}",
+                "shard": "shards/part-000000.tar",
+                "num_frames": 81,
+                "fps": 16.0,
+                "start_frame": 0,
+            },
+        )
+        for ordinal in range(3)
+    )
+
+    class Shards:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> Shards:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+    class Reader:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        @staticmethod
+        def materialize(plan: SamplePlan) -> SamplePlan:
+            return plan
+
+    monkeypatch.setattr(preencoded, "resolve_index_path", lambda *_args: "train.jsonl")
+    monkeypatch.setattr(preencoded, "read_index", lambda *_args: rows)
+    monkeypatch.setattr(preencoded, "_rows_with_fixed_starts", tuple)
+    monkeypatch.setattr(preencoded, "resolver_from_config", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(preencoded, "TarShardReader", Shards)
+    monkeypatch.setattr(preencoded, "RawSampleReader", Reader)
+    monkeypatch.setattr(preencoded, "build_shard_prefetcher", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        preencoded,
+        "decode_preencoded_sample",
+        lambda *_args: (_ for _ in ()).throw(GCSDownloadTimeout("injected timeout")),
+    )
+    config = {
+        "data": {
+            "num_workers": 0,
+            "train_index": "train.jsonl",
+            "pixel_frames": 81,
+            "fps": 16.0,
+            "seed": 42,
+            "shuffle_buffer": 1,
+            "partition_mode": "global_occurrence",
+            "transport": {"root": "/read-only-data"},
+        },
+        "train": {"micro_batch_size": 1},
+    }
+    topology = SimpleNamespace(
+        dp_rank=0,
+        dp_world_size=1,
+        node_id=0,
+        node_count=1,
+        local_dp_rank=0,
+        local_dp_world_size=1,
+        local_rank=0,
+    )
+    reader = preencoded.build_preencoded_dataloader(config, topology)
+
+    with pytest.raises(RuntimeError, match="emitted no samples in epoch 0"):
+        next(reader)
+    reader.close()
 
 
 def test_preencoded_stream_prepares_the_planned_shard_before_materialization(

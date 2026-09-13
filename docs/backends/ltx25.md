@@ -78,6 +78,9 @@ torchrun --nnodes=2 --node-rank="$NODE_RANK" --nproc-per-node=8 \
 Run `solarwm config resolve` with the same config and `--set` arguments before
 training if you want to inspect the resolved configuration.
 
+New LTX checkpoints restore all reader and RNG state. Older checkpoints remain
+loadable, but lack the Python and NumPy RNG state needed for an exact resume.
+
 ## Inference
 
 Inference uses two GPUs and the released adapter:

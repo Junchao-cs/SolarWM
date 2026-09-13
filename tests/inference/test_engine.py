@@ -8,6 +8,7 @@ import pytest
 import solarwm.inference.engine as inference_engine
 from solarwm.errors import BackendContractError
 from solarwm.inference import (
+    GeneratedFile,
     GeneratedSample,
     InferenceCase,
     InferenceEngine,
@@ -160,6 +161,37 @@ def test_generated_artifact_accepts_a_canonical_nested_path(tmp_path: Path) -> N
         [_case(0)], weights_id="weights", output_dir=tmp_path / "nested"
     )
     assert (summary.output_dir / "slot-000000/frames/000000.png").read_bytes() == b"frame"
+
+
+def test_inference_links_large_generated_files_without_loading_them(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "generated.mp4"
+    source.write_bytes(b"streamed-video")
+
+    class FileAdapter(FakeAdapter):
+        def generate(self, case: InferenceCase, *, weights_id: str) -> GeneratedSample:
+            return GeneratedSample(
+                artifacts={"video.mp4": GeneratedFile(source)},
+                shape=(1, 1, 3, 1, 1),
+                dtype="float32",
+            )
+
+    summary = InferenceEngine(FileAdapter()).run(
+        [_case(0)], weights_id="weights", output_dir=tmp_path / "file-backed"
+    )
+
+    published = summary.output_dir / "slot-000000/video.mp4"
+    assert published.read_bytes() == b"streamed-video"
+    assert not source.exists()
+    manifest = json.loads((published.parent / "manifest.json").read_text())
+    assert manifest["artifacts"] == [
+        {
+            "bytes": len(b"streamed-video"),
+            "digest": "b7dff0ced259c44af07974f373c50a2b4d5565e4be64d650ef7a6c31d9e54730",
+            "path": "slot-000000/video.mp4",
+        }
+    ]
 
 
 def test_inference_output_file_writes_are_create_only(tmp_path: Path) -> None:

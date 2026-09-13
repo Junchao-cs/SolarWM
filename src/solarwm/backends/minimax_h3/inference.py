@@ -1,4 +1,4 @@
-"""Shared-engine inference adapter for MiniMax-H3 Stage0.5."""
+"""MiniMax-H3 generation packaging and shared-engine inference adapter."""
 
 from __future__ import annotations
 
@@ -18,6 +18,9 @@ def camera_fingerprint(batch: H3ArtifactBatch) -> str:
     digest = hashlib.blake2s()
     digest.update(batch.camera_viewmats.detach().cpu().numpy().tobytes())
     digest.update(batch.camera_K.detach().cpu().numpy().tobytes())
+    if batch.rollout_camera_viewmats is not None:
+        digest.update(batch.rollout_camera_viewmats.detach().cpu().numpy().tobytes())
+        digest.update(batch.rollout_camera_K.detach().cpu().numpy().tobytes())
     return digest.hexdigest()
 
 
@@ -120,6 +123,7 @@ def package_generated(
     weights_id: str,
     num_inference_steps: int,
     reference_latents: Any | None = None,
+    sample_solver: str = "shifted-euler-data-ward",
 ) -> GeneratedSample:
     """Decode/package already-generated latents on the single artifact writer."""
 
@@ -160,8 +164,8 @@ def package_generated(
         provenance={
             "weights_id": weights_id,
             "preencode_version": "h3.158f.v1",
-            "sampler": "shifted-euler-data-ward",
-            "solver": "shifted-euler-data-ward",
+            "sampler": sample_solver,
+            "solver": sample_solver,
             "num_inference_steps": int(num_inference_steps),
             "num_sigma_points": int(num_inference_steps),
             "video_shift": 12.0,

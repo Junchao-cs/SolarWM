@@ -39,7 +39,12 @@ from solarwm.training.optim import FP32MasterAdamW
 from solarwm.training.schedule import make_warmup_cosine
 
 from .checkpoint import StrictModelLoadReceipt
-from .runtime import REQUIRED_CHECKPOINT_COMPONENTS, checkpoint_contract
+from .runtime import (
+    REQUIRED_CHECKPOINT_COMPONENTS,
+    _host_rng_state,
+    _restore_host_rng_state,
+    checkpoint_contract,
+)
 from .torch_data import PreencodedBatchSource, TorchBatch
 from .torch_distributed import (
     broadcast_sp_tensor,
@@ -384,11 +389,12 @@ class LTX25TrainingRuntime:
 
     def _rank_runtime_state(self) -> dict[str, Any]:
         return {
-            "schema": "solarwm.ltx25.rank-runtime.v1",
+            "schema": "solarwm.ltx25.rank-runtime.v2",
             "rank": self.distributed.rank,
             "world_size": self.distributed.world_size,
             "global_step": self._global_step,
             "checkpoint_id": self._checkpoint_id,
+            **_host_rng_state(),
             "torch_rng_state": torch.get_rng_state(),
             "cuda_rng_state": torch.cuda.get_rng_state(self.device),
             "reader": self.data.state_dict(),
@@ -534,7 +540,11 @@ class LTX25TrainingRuntime:
                 raise BackendContractError("LTX resume raw-rank state inventory differs")
             state = torch.load(runtime_path, map_location="cpu", weights_only=True)
             if (
-                state.get("schema") != "solarwm.ltx25.rank-runtime.v1"
+                state.get("schema")
+                not in {
+                    "solarwm.ltx25.rank-runtime.v1",
+                    "solarwm.ltx25.rank-runtime.v2",
+                }
                 or int(state.get("rank", -1)) != self.distributed.rank
                 or int(state.get("world_size", -1)) != self.distributed.world_size
                 or int(state.get("global_step", -1)) != checkpoint.step
@@ -559,6 +569,8 @@ class LTX25TrainingRuntime:
             self.optimizer.load_state_dict(optimizer)
             self.scheduler.load_state_dict(scheduler)
             self.data.load_state_dict(state["reader"])
+            if state["schema"] == "solarwm.ltx25.rank-runtime.v2":
+                _restore_host_rng_state(state)
             torch.set_rng_state(state["torch_rng_state"])
             torch.cuda.set_rng_state(state["cuda_rng_state"], self.device)
 

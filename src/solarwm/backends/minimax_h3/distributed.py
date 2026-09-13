@@ -565,3 +565,43 @@ __all__ = [
     "state",
     "sync_lora_gradients",
 ]
+
+
+def prepare_flex_attention_input(tensor: Any) -> Any:
+    """Convert BSHD to contiguous BHSD without changing values or autograd.
+
+    Ulysses returns sequence-major storage. PyTorch 2.6 Flex cannot order its
+    symbolic transposed strides; the head-major layout matches native H3 SP1.
+    An already head-major input view needs no copy.
+    """
+
+    return tensor.transpose(1, 2).contiguous()
+
+
+def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) -> None:
+    """Require a global, head-broadcast Flex mask before Ulysses sharding.
+
+    Ulysses restores the full packed sequence while distributing heads. H3's
+    W6 visibility is head-independent, so the original global mask is reused
+    on every SP rank; neither its rows nor its head dimension may be sharded.
+    """
+
+    if attention_mask is None:
+        return
+    if type(attention_mask).__name__ != "BlockMask":
+        raise ValueError("H3 packed SP accepts only a global Flex BlockMask or no mask")
+    if tuple(attention_mask.seq_lengths) != (total_tokens, total_tokens):
+        raise ValueError("H3 packed SP BlockMask must cover the complete global sequence")
+    for name in (
+        "kv_num_blocks",
+        "kv_indices",
+        "full_kv_num_blocks",
+        "full_kv_indices",
+        "q_num_blocks",
+        "q_indices",
+        "full_q_num_blocks",
+        "full_q_indices",
+    ):
+        metadata = getattr(attention_mask, name, None)
+        if metadata is not None and (metadata.ndim < 2 or metadata.shape[1] != 1):
+            raise ValueError("H3 packed SP requires head-broadcast BlockMask metadata")

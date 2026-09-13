@@ -44,8 +44,8 @@ class WanTextEncoder:
             raise BackendContractError(f"cannot load UMT5 weights {weights}: {exc}") from exc
         self.tokenizer = HuggingfaceTokenizer(name=str(tokenizer), seq_len=512, clean="whitespace")
 
-    def to(self, device: Any) -> WanTextEncoder:
-        self.module.to(device)
+    def to(self, device: Any, *, dtype: Any | None = None) -> WanTextEncoder:
+        self.module.to(device=device, dtype=dtype)
         return self
 
     @property
@@ -187,8 +187,8 @@ class Wan5BVAE:
         except Exception as exc:
             raise BackendContractError(f"cannot load Wan VAE {weights}: {exc}") from exc
 
-    def to(self, device: Any) -> Wan5BVAE:
-        self.module.to(device)
+    def to(self, device: Any, *, dtype: Any | None = None) -> Wan5BVAE:
+        self.module.to(device=device, dtype=dtype)
         return self
 
     def _scale(self, reference: Any) -> list[Any]:
@@ -224,12 +224,43 @@ class Wan5BVAE:
         *,
         chunk_latent_frames: int = 60,
     ) -> Any:
-        """Decode consecutive temporal tiles with one continuous VAE cache."""
+        """Decode consecutive temporal tiles and concatenate them on CPU."""
+
+        import torch
+
+        if (
+            latents_btchw.ndim != 5
+            or int(latents_btchw.shape[0]) <= 0
+            or int(latents_btchw.shape[1]) <= 0
+        ):
+            raise BackendContractError("Wan streaming VAE decode requires non-empty BTCHW latents")
+        outputs = []
+        for sample in latents_btchw.split(1, dim=0):
+            chunks = list(
+                self.decode_streaming_chunks(
+                    sample,
+                    chunk_latent_frames=chunk_latent_frames,
+                )
+            )
+            if not chunks:
+                raise BackendContractError("Wan streaming VAE decode produced no chunks")
+            outputs.append(torch.cat(chunks, dim=1))
+        return torch.cat(outputs, dim=0)
+
+    def decode_streaming_chunks(
+        self,
+        latents_btchw: Any,
+        *,
+        chunk_latent_frames: int = 60,
+    ) -> Any:
+        """Yield CPU BTCHW tiles while preserving one continuous VAE cache."""
 
         import torch
 
         if latents_btchw.ndim != 5 or int(latents_btchw.shape[1]) <= 0:
             raise BackendContractError("Wan streaming VAE decode requires non-empty BTCHW latents")
+        if int(latents_btchw.shape[0]) != 1:
+            raise BackendContractError("Wan streaming VAE file decode requires batch size one")
         if chunk_latent_frames <= 0:
             raise BackendContractError("Wan streaming VAE chunk size must be positive")
         clear_cache = getattr(self.module, "clear_cache", None)
@@ -240,9 +271,7 @@ class Wan5BVAE:
             )
 
         clips = latents_btchw.permute(0, 2, 1, 3, 4)
-        output = []
         for clip in clips:
-            decoded_chunks = []
             clear_cache()
             try:
                 for start in range(0, int(clip.shape[1]), chunk_latent_frames):
@@ -253,12 +282,10 @@ class Wan5BVAE:
                         raise BackendContractError(
                             "Wan streaming VAE decode produced non-finite pixels"
                         )
-                    decoded_chunks.append(decoded.float().clamp_(-1, 1).squeeze(0).cpu())
+                    yield (decoded.float().clamp_(-1, 1).permute(0, 2, 1, 3, 4).contiguous().cpu())
                     del decoded
             finally:
                 clear_cache()
-            output.append(torch.cat(decoded_chunks, dim=1))
-        return torch.stack(output, dim=0).permute(0, 2, 1, 3, 4)
 
 
 class WanA14BVAE:
@@ -341,8 +368,8 @@ class WanA14BVAE:
         except Exception as exc:
             raise BackendContractError(f"cannot load Wan2.1 A14B VAE {weights}: {exc}") from exc
 
-    def to(self, device: Any) -> WanA14BVAE:
-        self.module.to(device)
+    def to(self, device: Any, *, dtype: Any | None = None) -> WanA14BVAE:
+        self.module.to(device=device, dtype=dtype)
         return self
 
     def _scale(self, reference: Any) -> list[Any]:
@@ -546,15 +573,14 @@ class WanDiffusion:
         )
         return output.permute(0, 2, 1, 3, 4)
 
-    @staticmethod
-    def flow_to_x0(noisy_btchw: Any, flow_btchw: Any, timestep_frames: Any) -> Any:
+    def flow_to_x0(self, noisy_btchw: Any, flow_btchw: Any, timestep_frames: Any) -> Any:
         """Recover ``x0`` from the Wan rectified-flow velocity.
 
-        Wan consumes shifted raw timesteps in ``[0, 1000]`` and follows
-        ``x_t = x0 + sigma * (noise - x0)``.  Therefore ``x0`` is exactly
-        ``x_t - sigma * velocity``.  Keeping this conversion in the runtime
-        adapter gives Stage2 rollout, validation, and inference one numerical
-        closure instead of model-wrapper-specific variants.
+        Preserve the frozen Wan wrapper's numerical contract: select sigma
+        from the shifted scheduler grid and perform the subtraction in FP64
+        before casting back to the model dtype.  In particular, legacy
+        self-forcing inference supplies BF16 timestep tokens, so using the
+        rounded token value directly as ``sigma * 1000`` changes the rollout.
         """
 
         import torch
@@ -563,15 +589,23 @@ class WanDiffusion:
         flow = torch.as_tensor(flow_btchw, device=noisy.device)
         if noisy.shape != flow.shape:
             raise BackendContractError("Wan flow/x_t shapes differ while reconstructing x0")
-        timestep = torch.as_tensor(timestep_frames, device=noisy.device, dtype=torch.float32)
+        timestep = torch.as_tensor(timestep_frames, device=noisy.device)
         if timestep.shape != noisy.shape[:2]:
             raise BackendContractError(
                 "Wan x0 reconstruction requires [batch, latent_frames] timesteps"
             )
-        sigma = timestep
-        while sigma.ndim < noisy.ndim:
-            sigma = sigma.unsqueeze(-1)
-        return (noisy.float() - sigma * flow.float() / 1000.0).to(noisy.dtype)
+        original_dtype = flow.dtype
+        flat_noisy = noisy.flatten(0, 1).double()
+        flat_flow = flow.flatten(0, 1).double()
+        schedule_timesteps = self.scheduler.timesteps.to(device=noisy.device, dtype=torch.float64)
+        schedule_sigmas = self.scheduler.sigmas.to(device=noisy.device, dtype=torch.float64)
+        timestep_ids = (
+            (schedule_timesteps.unsqueeze(0) - timestep.flatten().double().unsqueeze(1))
+            .abs()
+            .argmin(dim=1)
+        )
+        sigma = schedule_sigmas[timestep_ids].reshape(-1, 1, 1, 1)
+        return (flat_noisy - sigma * flat_flow).to(original_dtype).unflatten(0, noisy.shape[:2])
 
 
 def build_diffusion(config: Mapping[str, Any]) -> tuple[WanDiffusion, WeightLoadReport]:

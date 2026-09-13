@@ -93,9 +93,9 @@ validation:
   passes: [live, ema]
 
 checkpoint:
-  resume_from: /path/to/SolarWM-h3-33B-bid-stage0p5-158f
+  resume_from: /path/to/SolarWM-models/SolarWM-h3-33B-bid-stage0p5-158f
   format: solarwm_lora
-  weight_source: live
+  weight_source: ema
 
 runtime:
   output_dir: outputs/minimax-h3-infer-158f-lora384-sp2

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -11,6 +12,7 @@ from typing import Any, Protocol
 
 from solarwm.errors import BackendContractError
 from solarwm.runtime.create_only import (
+    link_file_create_only,
     publish_directory_no_replace,
     write_file_create_only,
 )
@@ -56,8 +58,32 @@ class InferenceCase:
 
 
 @dataclass(frozen=True)
+class GeneratedFile:
+    """A generated artifact already materialized on the output filesystem.
+
+    Large videos use this path-backed form so the inference engine never has to
+    hold the complete encoded artifact in memory. The producer must place the
+    file on the same filesystem as ``runtime.output_dir``; the engine publishes
+    it with a create-only hard link and then removes the private source name.
+    """
+
+    path: Path
+    delete_after_publish: bool = True
+
+    def __post_init__(self) -> None:
+        path = Path(self.path).expanduser()
+        try:
+            mode = path.lstat().st_mode
+        except OSError as exc:
+            raise BackendContractError(f"generated file is not readable: {path}: {exc}") from exc
+        if not stat.S_ISREG(mode) or path.is_symlink():
+            raise BackendContractError(f"generated file must be a regular non-symlink file: {path}")
+        object.__setattr__(self, "path", path.resolve())
+
+
+@dataclass(frozen=True)
 class GeneratedSample:
-    artifacts: Mapping[str, bytes]
+    artifacts: Mapping[str, bytes | GeneratedFile]
     shape: tuple[int, ...]
     dtype: str
     metrics: Mapping[str, float] = field(default_factory=dict)
@@ -69,7 +95,7 @@ class GeneratedSample:
         paths: list[PurePosixPath] = []
         for name, value in self.artifacts.items():
             path = _canonical_artifact_path(name)
-            if not isinstance(value, bytes):
+            if not isinstance(value, (bytes, GeneratedFile)):
                 raise BackendContractError(f"invalid generated artifact {name!r}")
             if any(
                 path == other or path in other.parents or other in path.parents for other in paths
@@ -99,6 +125,19 @@ def _write_file(path: Path, value: bytes) -> None:
         error_type=BackendContractError,
         label="inference output file",
     )
+
+
+def _file_identity(path: Path) -> tuple[int, str]:
+    digest = hashlib.blake2s()
+    size = 0
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                size += len(chunk)
+                digest.update(chunk)
+    except OSError as exc:
+        raise BackendContractError(f"cannot read generated file {path}: {exc}") from exc
+    return size, digest.hexdigest()
 
 
 class InferenceEngine:
@@ -151,6 +190,7 @@ class InferenceEngine:
             manifest: dict[str, Any] | None = None
             if case_index < len(cases):
                 case = cases[case_index]
+                generated: GeneratedSample | None = None
                 try:
                     generated = self.adapter.generate(case, weights_id=weights_id)
                     sample_dir = staging / f"slot-{case.slot:06d}"
@@ -158,12 +198,23 @@ class InferenceEngine:
                     artifact_records: list[dict[str, Any]] = []
                     for name, value in sorted(generated.artifacts.items()):
                         artifact = sample_dir / name
-                        _write_file(artifact, value)
+                        if isinstance(value, GeneratedFile):
+                            size, digest = _file_identity(value.path)
+                            link_file_create_only(
+                                value.path,
+                                artifact,
+                                error_type=BackendContractError,
+                                label="inference generated file",
+                            )
+                        else:
+                            _write_file(artifact, value)
+                            size = len(value)
+                            digest = hashlib.blake2s(value).hexdigest()
                         artifact_records.append(
                             {
                                 "path": f"slot-{case.slot:06d}/{name}",
-                                "bytes": len(value),
-                                "digest": hashlib.blake2s(value).hexdigest(),
+                                "bytes": size,
+                                "digest": digest,
                             }
                         )
                     manifest = {
@@ -183,6 +234,11 @@ class InferenceEngine:
                     )
                 except Exception as exc:
                     case_error = f"{type(exc).__name__}: {exc}"
+                finally:
+                    if generated is not None:
+                        for value in generated.artifacts.values():
+                            if isinstance(value, GeneratedFile) and value.delete_after_publish:
+                                value.path.unlink(missing_ok=True)
             if collective_error is not None:
                 collective_error(case_error, f"case wave {case_index}")
             if case_error is not None:

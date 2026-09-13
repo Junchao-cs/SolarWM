@@ -117,7 +117,10 @@ def load_transformer(model_cfg: Mapping[str, Any], *, device: Any) -> H3RuntimeM
         kwargs["revision"] = model_cfg["revision"]
     transformer = SolarMiniMaxH3Transformer3DModel.strict_from_pretrained(path, **kwargs)
     validate_parameter_dtypes(transformer)
-    transformer.set_attention_backend(str(model_cfg.get("attention_backend", "flash")))
+    # W6 uses our explicit compiled BlockMask path. Native unmasked attention
+    # (including Qwen token refinement and SGF score models) remains Flash.
+    requested_backend = str(model_cfg.get("attention_backend", "flash"))
+    transformer.set_attention_backend("flash" if requested_backend == "flex" else requested_backend)
     if model_cfg.get("transformer_device_map") is None:
         transformer = transformer.to(device)
     fp32_units = tuple(

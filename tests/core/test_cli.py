@@ -50,6 +50,52 @@ def test_data_inspect(tmp_path: Path, capsys) -> None:
     assert payload["virtual_occurrences"] == 3
 
 
+def test_cache_warmup_is_an_explicit_optional_data_command(tmp_path, capsys, monkeypatch) -> None:
+    import solarwm.data.transport as transport
+
+    index = tmp_path / "index.jsonl"
+    index.write_text(
+        json.dumps(
+            {
+                "sample_id": "sample",
+                "key": "key",
+                "shard": "raw/shard.tar",
+                "shard_size": 4,
+            }
+        )
+        + "\n"
+    )
+    calls = []
+
+    class Resolver:
+        def __init__(self, **kwargs):
+            self.max_bytes = kwargs["max_bytes"]
+
+        def resolve(self, row):
+            calls.append(row.shard)
+            return tmp_path / "shard.tar"
+
+    monkeypatch.setattr(transport, "GCSResolver", Resolver)
+    assert (
+        main(
+            [
+                "data",
+                "warm-cache",
+                str(index),
+                "--root",
+                "gs://bucket/release",
+                "--cache-dir",
+                str(tmp_path / "cache"),
+                "--max-gib",
+                "4",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["shards"] == 1
+    assert calls == ["raw/shard.tar"]
+
+
 def test_data_materialize_wan153f_command(tmp_path: Path, capsys) -> None:
     train = tmp_path / "train.jsonl.gz"
     test = tmp_path / "test.jsonl.gz"

@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import os
+import random
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,12 @@ from solarwm.checkpoint import (
 )
 from solarwm.errors import BackendContractError
 from solarwm.inference import InferenceAdapter, InferenceCase
+from solarwm.runtime.safe_state import (
+    decode_numpy_rng_state,
+    decode_python_rng_state,
+    encode_numpy_rng_state,
+    encode_python_rng_state,
+)
 from solarwm.training import GradientStatus, MicrobatchResult, TrainingRuntime
 
 from .checkpoint import (
@@ -47,6 +54,22 @@ REQUIRED_CHECKPOINT_COMPONENTS = (
     "scheduler",
     "runtime",
 )
+
+
+def _host_rng_state() -> dict[str, Any]:
+    import numpy as np
+
+    return {
+        "python_rng_state": encode_python_rng_state(random.getstate()),
+        "numpy_rng_state": encode_numpy_rng_state(np.random.get_state()),
+    }
+
+
+def _restore_host_rng_state(state: Mapping[str, Any]) -> None:
+    import numpy as np
+
+    random.setstate(decode_python_rng_state(state["python_rng_state"]))
+    np.random.set_state(decode_numpy_rng_state(state["numpy_rng_state"]))
 
 
 @dataclass(frozen=True)

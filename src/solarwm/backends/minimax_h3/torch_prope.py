@@ -140,3 +140,60 @@ def prope_qkv(
 
 
 __all__ = ["logd4_relative_viewmats", "prope_qkv"]
+
+
+def _prepare_suffix_transforms(
+    *,
+    viewmats: Any,
+    Ks: Any,
+) -> tuple[
+    Callable[[Any], Any],
+    Callable[[Any], Any],
+    Callable[[Any], Any],
+]:
+    import torch
+
+    fixed_K = _fixed_focal_K(Ks)
+    normalized_K = torch.zeros_like(fixed_K)
+    normalized_K[..., 0, 0] = fixed_K[..., 0, 0]
+    normalized_K[..., 1, 1] = fixed_K[..., 1, 1]
+    normalized_K[..., 2, 2] = 1.0
+
+    projection = torch.einsum("...ij,...jk->...ik", _lift_K(normalized_K), viewmats)
+    projection_t = projection.transpose(-1, -2).to(dtype=viewmats.dtype)
+    projection_inv = torch.einsum(
+        "...ij,...jk->...ik",
+        _invert_se3(viewmats),
+        _lift_K(_invert_K(normalized_K)),
+    ).to(dtype=viewmats.dtype)
+    return (
+        partial(_project, matrix=projection_t),
+        partial(_project, matrix=projection_inv),
+        partial(_project, matrix=projection),
+    )
+
+
+def prope_qkv_separate(q, k, v, *, query_viewmats, query_K, key_viewmats, key_K):
+    """H3's existing head-sliced PRoPE with different query and cached KV rows."""
+    import torch
+
+    if q.ndim != 4 or k.ndim != 4 or k.shape != v.shape:
+        raise ValueError("H3 cached PRoPE requires BHSD queries and equal BHSD keys/values")
+    if q.shape[:2] != k.shape[:2] or q.shape[-1] != 128 or k.shape[-1] != 128:
+        raise ValueError("H3 cached PRoPE requires matching batch/heads and head_dim=128")
+    apply_q, _, apply_output = _prepare_suffix_transforms(
+        viewmats=logd4_relative_viewmats(query_viewmats.to(q.dtype)), Ks=query_K.to(q.dtype)
+    )
+    _, apply_kv, _ = _prepare_suffix_transforms(
+        viewmats=logd4_relative_viewmats(key_viewmats.to(k.dtype)), Ks=key_K.to(k.dtype)
+    )
+
+    def suffix(features, transform):
+        return torch.cat((features[..., :96], transform(features[..., 96:128])), dim=-1)
+
+    return (
+        suffix(q, apply_q),
+        suffix(k, apply_kv),
+        suffix(v, apply_kv),
+        partial(suffix, transform=apply_output),
+    )

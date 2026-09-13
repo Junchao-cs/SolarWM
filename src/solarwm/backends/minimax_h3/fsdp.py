@@ -48,6 +48,7 @@ def wrap_h3_fsdp(
     fp32_units: Iterable[torch.nn.Module],
     ignored_parameters: Iterable[torch.nn.Parameter],
     activation_checkpointing: bool = True,
+    frozen_base_shard_size: int | None = None,
 ) -> torch.nn.Module:
     """Wrap 50 H3 blocks and the six FP32 leaf owners over logical DP."""
 
@@ -57,8 +58,8 @@ def wrap_h3_fsdp(
         return model.to(torch.device("cuda", local_rank))
     standalone = tuple(fp32_units)
     standalone_ids = {id(module) for module in standalone}
-    if len(standalone_ids) != 6:
-        raise ValueError("H3 FSDP requires exactly six distinct FP32 leaf owners")
+    if len(standalone_ids) not in {6, 8}:
+        raise ValueError("H3 FSDP requires six FP32 leaf owners, plus two for AnyFlow")
     ignored = tuple(ignored_parameters)
     if len({id(parameter) for parameter in ignored}) != len(ignored):
         raise ValueError("H3 FSDP ignored parameters contain duplicates")
@@ -69,10 +70,15 @@ def wrap_h3_fsdp(
             return True
         return isinstance(module, transformer_block_cls) or id(module) in standalone_ids
 
+    process_group = get_dp_group()
+    strategy = ShardingStrategy.FULL_SHARD
+    if frozen_base_shard_size is not None:
+        process_group = frozen_base_groups(frozen_base_shard_size)
+        strategy = ShardingStrategy.HYBRID_SHARD
     wrapped = FSDP(
         model,
         auto_wrap_policy=policy,
-        sharding_strategy=ShardingStrategy.FULL_SHARD,
+        sharding_strategy=strategy,
         mixed_precision=MixedPrecision(
             param_dtype=None, reduce_dtype=torch.float32, buffer_dtype=None
         ),
@@ -82,7 +88,7 @@ def wrap_h3_fsdp(
         forward_prefetch=True,
         backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
         sync_module_states=False,
-        process_group=get_dp_group(),
+        process_group=process_group,
         limit_all_gathers=True,
         ignored_states=ignored or None,
     )
@@ -138,3 +144,33 @@ def finite_clip_norm(
 
 
 __all__ = ["finite_clip_norm", "initialize_distributed", "wrap_h3_fsdp"]
+
+
+_FROZEN_BASE_GROUPS: dict[tuple[int, int], tuple[object, object]] = {}
+
+
+def frozen_base_groups(shard_size: int) -> tuple[object, object]:
+    """Shard only the frozen base over physical node GPUs; LoRA keeps SP/DP."""
+    import os
+
+    world, rank = dist.get_world_size(), dist.get_rank()
+    local_world = int(os.environ["LOCAL_WORLD_SIZE"])
+    if shard_size != local_world or world % shard_size:
+        raise ValueError("H3 frozen-base shards must be exactly one complete physical node")
+    key = (world, shard_size)
+    if key not in _FROZEN_BASE_GROUPS:
+        shard, replica = None, None
+        for first in range(0, world, shard_size):
+            ranks = list(range(first, first + shard_size))
+            group = dist.new_group(ranks)
+            if rank in ranks:
+                shard = group
+        for offset in range(shard_size):
+            ranks = list(range(offset, world, shard_size))
+            group = dist.new_group(ranks)
+            if rank in ranks:
+                replica = group
+        if shard is None or replica is None:
+            raise RuntimeError("H3 frozen-base process groups are incomplete")
+        _FROZEN_BASE_GROUPS[key] = (shard, replica)
+    return _FROZEN_BASE_GROUPS[key]

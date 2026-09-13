@@ -213,6 +213,9 @@ def test_stage2_generation_uses_one_persistent_cache_and_exact_nfe4() -> None:
     assert [call["cache_update_policy"] for call in student.calls].count("none") == 8
     assert [call["cache_update_policy"] for call in student.calls].count("commit_detached") == 2
     assert [call["current_start"] for call in student.calls] == [0] * 5 + [6] * 5
+    assert all(call["timestep"].dtype == torch.bfloat16 for call in student.calls)
+    assert torch.unique(student.calls[1]["timestep"]).tolist() == [0.0, 752.0]
+    assert torch.unique(student.calls[6]["timestep"]).tolist() == [752.0]
     assert schedule["timesteps"] == [1000.0, 750.0, 500.0, 250.0]
     assert schedule["persistent_kv_cache"] is True
     assert noise_shapes == [(1, 6, 1, 1, 1)] + [(1, 3, 1, 1, 1)] * 6
@@ -339,16 +342,23 @@ def test_stage2_long_generation_uses_streaming_vae_tiles(
     }
 
 
-def test_stage2_camera_publication_pads_to_source_and_serializes_original_c2w(
+@pytest.mark.parametrize(
+    ("published_frames", "expected_trim", "expected_pad"),
+    ((953, 4, 0), (960, 0, 3)),
+)
+def test_stage2_camera_publication_adjusts_to_source_and_serializes_original_c2w(
     monkeypatch: pytest.MonkeyPatch,
+    published_frames: int,
+    expected_trim: int,
+    expected_pad: int,
 ) -> None:
     torch = pytest.importorskip("torch")
     from solarwm.backends.wan22.runtime import inference, stage2
 
     decoded = torch.arange(957, dtype=torch.float32).reshape(1, 957, 1, 1, 1)
     decoded = decoded.expand(-1, -1, 3, -1, -1).contiguous()
-    c2w = np.repeat(np.eye(4, dtype=np.float64)[None], 960, axis=0)
-    c2w[:, 0, 3] = np.arange(960, dtype=np.float64) + 10.0
+    c2w = np.repeat(np.eye(4, dtype=np.float64)[None], published_frames, axis=0)
+    c2w[:, 0, 3] = np.arange(published_frames, dtype=np.float64) + 10.0
     encoded: list[object] = []
     compared: list[object] = []
     monkeypatch.setattr(
@@ -370,8 +380,8 @@ def test_stage2_camera_publication_pads_to_source_and_serializes_original_c2w(
 
     monkeypatch.setattr(inference, "_encode_compare_mp4", capture_compare)
     prepared = SimpleNamespace(
-        pixels=torch.zeros((960, 3, 1, 1)),
-        publication_pixel_frames=960,
+        pixels=torch.zeros((published_frames, 3, 1, 1)),
+        publication_pixel_frames=published_frames,
         publication_c2w=c2w,
     )
     provider = SimpleNamespace(
@@ -410,18 +420,113 @@ def test_stage2_camera_publication_pads_to_source_and_serializes_original_c2w(
     generated = _stage2_generated_sample(provider, case, weights_id="release#ema")
 
     published = encoded[0]
-    assert tuple(published.shape) == (1, 960, 3, 1, 1)
-    assert torch.equal(published[:, 956], published[:, 957])
-    assert torch.equal(published[:, 956], published[:, 959])
+    assert tuple(published.shape) == (1, published_frames, 3, 1, 1)
+    if expected_pad:
+        assert torch.equal(published[:, 956], published[:, 957])
+        assert torch.equal(published[:, 956], published[:, 959])
+    else:
+        torch.testing.assert_close(published, decoded[:, :published_frames])
     assert compared[0] is published
     assert compared[1] is prepared
-    assert generated.shape == (1, 960, 3, 1, 1)
+    assert generated.shape == (1, published_frames, 3, 1, 1)
     assert generated.provenance["model_output_pixel_frames"] == 957
-    assert generated.provenance["published_pixel_frames"] == 960
-    assert generated.provenance["tail_pad_frames"] == 3
+    assert generated.provenance["published_pixel_frames"] == published_frames
+    assert generated.provenance["trim_frames"] == expected_trim
+    assert generated.provenance["tail_pad_frames"] == expected_pad
+    assert generated.provenance["tail_padding"] == (
+        "repeat_last_generated_frame" if expected_pad else "none"
+    )
     serialized = np.load(io.BytesIO(generated.artifacts["camera.npy"]), allow_pickle=False)
     assert serialized.dtype == np.float64
     np.testing.assert_array_equal(serialized, c2w)
+
+
+def test_stage2_hour_publication_selects_bounded_file_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.backends.wan22.runtime import inference, stage2
+
+    latent_frames = 1026
+    model_frames = 1 + 4 * (latent_frames - 1)
+    published_frames = model_frames + 3
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        stage2,
+        "_stage2_self_forcing_latents",
+        lambda *_: (
+            torch.zeros((1, latent_frames, 1, 1, 1)),
+            {"timesteps": [1000, 750, 500, 250]},
+        ),
+    )
+
+    def fake_stream(*args: object, **kwargs: object) -> object:
+        calls.append({"args": args, **kwargs})
+        return SimpleNamespace(
+            video=b"streamed-video",
+            compare=b"streamed-compare",
+            shape=(1, published_frames, 3, 1, 1),
+        )
+
+    monkeypatch.setattr(inference, "_encode_stage2_streaming", fake_stream)
+    prepared = SimpleNamespace(
+        pixels=torch.zeros((1, 3, 1, 1)),
+        publication_pixel_frames=published_frames,
+        publication_c2w=np.repeat(np.eye(4, dtype=np.float64)[None], published_frames, axis=0),
+        repeat_first_frame=True,
+    )
+    provider = SimpleNamespace(
+        device=torch.device("cpu"),
+        config={
+            "data": {"fps": 16.0},
+            "model": {"camera_translation_transform": "linear"},
+            "train": {"denoising_step_list": [1000, 750, 500, 250]},
+            "runtime": {"output_dir": str(tmp_path / "outputs" / "run")},
+        },
+        _conditions=lambda *_args, **_kwargs: (
+            torch.zeros((1, 1, 1, 1, 1)),
+            {},
+            {},
+            None,
+        ),
+        vae=SimpleNamespace(
+            decode=lambda *_args, **_kwargs: pytest.fail("direct VAE decode was used"),
+            decode_streaming=lambda *_args, **_kwargs: pytest.fail(
+                "concatenating VAE decode was used"
+            ),
+        ),
+        video_encoder=None,
+        _prepared={0: prepared},
+        _model_weight_role="ema",
+    )
+    case = SimpleNamespace(
+        slot=0,
+        noise_seed=42,
+        metadata={
+            "generation_pass": {
+                "name": "model_self_forcing_nfe4",
+                "weights": "model",
+                "mode": "autoregressive",
+                "solver": "self_forcing",
+                "num_inference_steps": 4,
+                "rollout_latent_frames": latent_frames,
+            }
+        },
+    )
+
+    generated = _stage2_generated_sample(provider, case, weights_id="release#ema")
+
+    assert len(calls) == 1
+    assert calls[0]["target_pixel_frames"] == published_frames
+    assert calls[0]["chunk_latent_frames"] == 12
+    assert generated.artifacts["video.mp4"] == b"streamed-video"
+    assert generated.artifacts["compare.mp4"] == b"streamed-compare"
+    assert generated.shape == (1, published_frames, 3, 1, 1)
+    assert generated.provenance["vae_decode"] == {
+        "mode": "continuous_cached_file_tiles",
+        "chunk_latent_frames": 12,
+    }
 
 
 def test_stage2_camera_length_resolves_release_default_weights(tmp_path: Path) -> None:
@@ -743,6 +848,7 @@ class _CheckpointRuntime:
         self.ema = None
         self._global_step = 6
         self.student_step = 1
+        self.data = _CheckpointReader()
 
     @property
     def global_step(self) -> int:
@@ -752,11 +858,61 @@ class _CheckpointRuntime:
         raise AssertionError("EMA must not be requested before student step 39")
 
 
+class _CheckpointReader:
+    def __init__(self) -> None:
+        self.position = 7
+
+    def state_dict(self) -> dict[str, int]:
+        return {"position": self.position}
+
+    def load_state_dict(self, state: dict[str, int]) -> None:
+        self.position = int(state["position"])
+
+
 def test_stage2_checkpoint_rejects_scheduler_progress_drift(tmp_path: Path) -> None:
     runtime = _CheckpointRuntime(tmp_path)
     with pytest.raises(BackendContractError, match="scheduler progress"):
         save_stage2_checkpoint(runtime, 6)
     assert not (tmp_path / "run/checkpoint_model_000006").exists()
+
+
+def test_stage2_checkpoint_state_quiesces_reader_before_rng_capture() -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.backends.wan22.runtime.stage2 import _local_rng_state
+
+    class Reader:
+        quiesced = False
+
+        def checkpoint_state_dict(self) -> dict[str, int]:
+            self.quiesced = True
+            return {"position": 7}
+
+        @staticmethod
+        def state_dict() -> dict[str, int]:
+            raise AssertionError("ordinary reader state must not bypass checkpoint quiescing")
+
+    reader = Reader()
+    state = _local_rng_state(0, torch.device("cpu"), reader)
+
+    assert reader.quiesced is True
+    assert state["reader"] == {"position": 7}
+
+
+def test_stage2_resume_rejects_runtime_state_without_reader_schema() -> None:
+    torch = pytest.importorskip("torch")
+    from solarwm.backends.wan22.runtime.stage2 import _local_rng_state, _restore_rng_state
+
+    reader = _CheckpointReader()
+    state = _local_rng_state(0, torch.device("cpu"), reader)
+    del state["schema"]
+
+    with pytest.raises(BackendContractError, match="exact rank-local runtime state"):
+        _restore_rng_state(
+            [state],
+            rank=0,
+            device=torch.device("cpu"),
+            reader=reader,
+        )
 
 
 def test_stage2_inference_verifies_the_complete_pair_before_allocation(
@@ -878,10 +1034,12 @@ def test_stage2_checkpoint_is_atomic_pair_and_exactly_resumable(
         for parameter in runtime.critic.module.parameters():
             parameter.fill_(-99.0)
     torch.manual_seed(999)
+    runtime.data.position = 99
     restored = load_stage2_checkpoint(runtime, checkpoint)
     assert restored.step == 6
     assert restored.student_step == 1
     assert runtime.global_step == 6
+    assert runtime.data.position == 7
     assert torch.equal(torch.rand(4), expected_random)
     for key, value in runtime.student.module.state_dict().items():
         assert torch.equal(value, expected_student[key])

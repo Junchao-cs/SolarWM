@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
+import http.client
 import io
 import json
 import os
 import tarfile
+import threading
+import time
+import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -13,7 +19,13 @@ import pytest
 from solarwm.data.archive import RawSampleReader, TarShardReader
 from solarwm.data.index import IndexRow
 from solarwm.data.sampling import SamplePlan
-from solarwm.data.transport import GCSResolver, GCSRestDownloader, LocalResolver, join_root
+from solarwm.data.transport import (
+    GCSDownloadTimeout,
+    GCSResolver,
+    GCSRestDownloader,
+    LocalResolver,
+    join_root,
+)
 from solarwm.errors import DataContractError
 
 
@@ -61,6 +73,58 @@ def test_gcs_rest_download_uses_current_object_path(
     assert urls == [
         "https://storage.googleapis.com/download/storage/v1/b/bucket/o/path%2Fobject.tar?alt=media"
     ]
+
+
+def test_gcs_rest_download_has_a_total_time_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [0.0]
+    opens = 0
+
+    class SlowResponse(io.BytesIO):
+        def read1(self, _size: int = -1) -> bytes:
+            now[0] += 0.6
+            return b"x"
+
+    def open_url(_request, *, timeout: float):
+        nonlocal opens
+        opens += 1
+        assert timeout == 1.0
+        return SlowResponse()
+
+    monkeypatch.setattr("solarwm.data.transport.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("solarwm.data.transport.urllib.request.urlopen", open_url)
+    downloader = GCSRestDownloader(
+        token=lambda: "token",
+        max_elapsed_seconds=1.0,
+        max_attempts=12,
+    )
+
+    with pytest.raises(GCSDownloadTimeout, match="exceeded 1s"):
+        downloader.download("gs://bucket/path/object.tar", "", io.BytesIO())
+
+    assert opens == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.HTTPError("https://example", 429, "busy", {}, None),
+        http.client.IncompleteRead(b"partial", 10),
+    ],
+)
+def test_gcs_rest_download_classifies_transient_retry_exhaustion_as_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    monkeypatch.setattr(
+        "solarwm.data.transport.urllib.request.urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error),
+    )
+    downloader = GCSRestDownloader(token=lambda: "token", max_attempts=1)
+
+    with pytest.raises(GCSDownloadTimeout, match="retry budget"):
+        downloader.download("gs://bucket/path/object.tar", "", io.BytesIO())
 
 
 def _row(**extra: object) -> IndexRow:
@@ -270,6 +334,59 @@ def test_gcs_cache_evicts_only_after_a_download(
     assert calls == [target]
 
 
+def test_gcs_cache_reaps_an_abandoned_large_partial_after_worker_exit(tmp_path: Path) -> None:
+    payload = b"complete"
+    cache = tmp_path / "cache"
+    row = _row(shard_size=len(payload))
+    uri = "gs://example-root/corpus/shards/000001.tar"
+    key = hashlib.blake2s(uri.encode()).hexdigest()
+    target_name = f"{key[:24]}-000001.tar"
+    cache.mkdir()
+    orphan = cache / f".{target_name}.999999.part"
+    orphan.write_bytes(b"large abandoned partial")
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=cache,
+        max_bytes=1024,
+        downloader=FakeDownloader(payload),
+    )
+
+    assert resolver.resolve(row).read_bytes() == payload
+    assert not orphan.exists()
+
+
+def test_gcs_cache_lru_uses_explicit_receipt_access_time(tmp_path: Path) -> None:
+    payload = b"data"
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=tmp_path / "cache",
+        max_bytes=2 * len(payload),
+        downloader=FakeDownloader(payload),
+    )
+    rows = tuple(
+        _row(
+            sample_id=f"sample-{index}",
+            key=f"sample-{index}",
+            shard=f"corpus/shards/{index:06d}.tar",
+            shard_size=len(payload),
+        )
+        for index in range(3)
+    )
+    first = resolver.resolve(rows[0])
+    second = resolver.resolve(rows[1])
+    first_receipt = first.with_suffix(first.suffix + ".receipt.json")
+    second_receipt = second.with_suffix(second.suffix + ".receipt.json")
+    os.utime(first_receipt, ns=(1, 1))
+    os.utime(second_receipt, ns=(2, 2))
+
+    assert resolver.resolve(rows[0]) == first
+    third = resolver.resolve(rows[2])
+
+    assert first.is_file()
+    assert not second.exists()
+    assert third.is_file()
+
+
 def test_gcs_identity_can_use_digest_without_md5(tmp_path: Path) -> None:
     payload = b"digest-only-immutable-object"
     row = _row(
@@ -384,6 +501,197 @@ def test_gcs_size_mismatch_never_commits_cache_entry(tmp_path: Path) -> None:
 
     assert not list(cache.glob("*.receipt.json"))
     assert not list(cache.glob("*.part"))
+
+
+def test_gcs_timeout_cleans_partial_releases_lock_and_defers_retry(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    row = _row(shard_size=10)
+
+    class TimeoutDownloader:
+        calls = 0
+
+        def download(self, uri: str, generation: str, output) -> int:
+            del uri, generation
+            self.calls += 1
+            output.write(b"partial")
+            raise GCSDownloadTimeout("injected timeout")
+
+    downloader = TimeoutDownloader()
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=cache,
+        max_bytes=1024,
+        downloader=downloader,
+        failure_cooldown_seconds=300.0,
+    )
+
+    with pytest.raises(GCSDownloadTimeout, match="injected timeout"):
+        resolver.resolve(row)
+
+    assert downloader.calls == 1
+    assert not list(cache.glob("*.part"))
+    lock_path = next(cache.glob("*.lock"))
+    with lock_path.open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    with pytest.raises(GCSDownloadTimeout, match="temporarily unavailable"):
+        resolver.resolve(row)
+
+    assert downloader.calls == 1
+
+
+def test_gcs_timeout_retry_recovers_after_cooldown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"recovered"
+    now = [100.0]
+
+    class RecoveringDownloader:
+        calls = 0
+
+        def download(self, uri: str, generation: str, output) -> int:
+            del uri, generation
+            self.calls += 1
+            if self.calls == 1:
+                raise GCSDownloadTimeout("injected timeout")
+            output.write(payload)
+            return len(payload)
+
+    monkeypatch.setattr("solarwm.data.transport.time.time", lambda: now[0])
+    downloader = RecoveringDownloader()
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=tmp_path / "cache",
+        max_bytes=1024,
+        downloader=downloader,
+        failure_cooldown_seconds=30.0,
+    )
+    row = _row(shard_size=len(payload))
+
+    with pytest.raises(GCSDownloadTimeout, match="injected timeout"):
+        resolver.resolve(row)
+    with pytest.raises(GCSDownloadTimeout, match="temporarily unavailable"):
+        resolver.resolve(row)
+
+    now[0] += 31.0
+    assert resolver.resolve(row).read_bytes() == payload
+    assert downloader.calls == 2
+    assert not list((tmp_path / "cache").glob("*.failure.json"))
+
+
+def test_gcs_timeout_default_retries_the_next_sample_without_a_shard_cooldown(
+    tmp_path: Path,
+) -> None:
+    payload = b"recovered"
+
+    class RecoveringDownloader:
+        calls = 0
+
+        def download(self, uri: str, generation: str, output) -> int:
+            del uri, generation
+            self.calls += 1
+            if self.calls == 1:
+                raise GCSDownloadTimeout("injected timeout")
+            output.write(payload)
+            return len(payload)
+
+    downloader = RecoveringDownloader()
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=tmp_path / "cache",
+        max_bytes=1024,
+        downloader=downloader,
+    )
+    row = _row(shard_size=len(payload))
+
+    with pytest.raises(GCSDownloadTimeout, match="injected timeout"):
+        resolver.resolve(row)
+    assert resolver.resolve(row).read_bytes() == payload
+    assert downloader.calls == 2
+    assert not list((tmp_path / "cache").glob("*.failure.json"))
+
+
+def test_gcs_timeout_is_shared_by_existing_lock_waiters_then_a_new_call_retries(
+    tmp_path: Path,
+) -> None:
+    payload = b"recovered"
+    first_entered = threading.Event()
+    second_started = threading.Event()
+
+    class RecoveringDownloader:
+        calls = 0
+
+        def download(self, uri: str, generation: str, output) -> int:
+            del uri, generation
+            self.calls += 1
+            if self.calls == 1:
+                first_entered.set()
+                assert second_started.wait(timeout=2)
+                time.sleep(0.1)
+                raise GCSDownloadTimeout("injected timeout")
+            output.write(payload)
+            return len(payload)
+
+    downloader = RecoveringDownloader()
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=tmp_path / "cache",
+        max_bytes=1024,
+        downloader=downloader,
+        max_elapsed_seconds=2.0,
+    )
+    row = _row(shard_size=len(payload))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(resolver.resolve, row)
+        assert first_entered.wait(timeout=2)
+        second = pool.submit(resolver.resolve, row)
+        second_started.set()
+        with pytest.raises(GCSDownloadTimeout, match="injected timeout"):
+            first.result(timeout=2)
+        with pytest.raises(GCSDownloadTimeout, match="while this sample waited"):
+            second.result(timeout=2)
+
+    assert downloader.calls == 1
+    assert resolver.resolve(row).read_bytes() == payload
+    assert downloader.calls == 2
+
+
+def test_gcs_resolve_uses_one_deadline_for_lock_wait_and_download(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [0.0]
+
+    class SlowResponse(io.BytesIO):
+        def read1(self, _size: int = -1) -> bytes:
+            now[0] += 0.25
+            return b"x"
+
+    def delayed_lock(lock, *, deadline: float, total_seconds: float, uri: str) -> None:
+        del deadline, total_seconds, uri
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        now[0] = 0.8
+
+    monkeypatch.setattr("solarwm.data.transport.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("solarwm.data.transport._acquire_flock", delayed_lock)
+    monkeypatch.setattr(
+        "solarwm.data.transport.urllib.request.urlopen",
+        lambda *_args, **_kwargs: SlowResponse(),
+    )
+    resolver = GCSResolver(
+        root="gs://example-root",
+        cache_dir=tmp_path / "cache",
+        max_bytes=1024,
+        downloader=GCSRestDownloader(token=lambda: "token", max_attempts=1),
+        max_elapsed_seconds=1.0,
+    )
+
+    with pytest.raises(GCSDownloadTimeout, match="exceeded 0s"):
+        resolver.resolve(_row(shard_size=1))
+
+    assert now[0] < 1.2
 
 
 def test_gcs_runtime_does_not_enforce_index_md5(tmp_path: Path) -> None:

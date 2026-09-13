@@ -54,6 +54,8 @@ boundary.
 | Wan 2.2 I2V-A14B | Stage0.5, bidirectional FM, 81f/153f | Train full-clip velocity prediction while conditioning on A14B's separate first-image tensor. Its latent layout and conditioning path are not interchangeable with TI2V-5B. |
 | LTX-2.5 video-only | Stage0.5, native rectified flow, 153f | Predict LTX's native clean-to-noise velocity. The first latent remains clean as the image condition and is excluded from the velocity MSE. |
 | MiniMax-H3 | Stage0.5, bidirectional FM, 158f | Predict the video velocity over the target latent sequence while using H3's anchor, prompt, camera, and packed sequence conditioning. The loss is video-velocity MSE. |
+| MiniMax-H3 | Stage1, teacher forcing with AnyFlow, 158f | Train five-latent chunks over a W6 window, using the first 45 encoded latents and native absolute RoPE. |
+| MiniMax-H3 | Stage2, SGF, 158f | Roll out 50 latents with cached raw K/V and sliding local RoPE; supervise the first 47 with a bidirectional teacher and critic. |
 
 The training progression is **Stage0.5 FM → Stage1 TF-AnyFlow → Stage2 DMD via
 SGF**.
@@ -84,8 +86,13 @@ Loss terminology:
   on the student's own rollout, while retaining a separate FM objective for the
   critic.
 
-Wan I2V-A14B, LTX-2.5, and MiniMax-H3 expose no Stage1 or Stage2 training route
+Wan I2V-A14B and LTX-2.5 expose no Stage1 or Stage2 training route
 in the current release. Reject those combinations before model allocation.
+
+For H3 Stage1/2, use the [backend guide](../../docs/backends/minimax-h3.md#stage1--stage2-setup).
+Keep the automatically frozen validation plan, encoded-silence condition and tail-camera
+rules fixed. Stage2 EMA begins at student update 39 (outer step 196); validation
+at steps 20 and 100 is LIVE only, and step 200 includes LIVE and EMA.
 
 ## Operating workflow
 

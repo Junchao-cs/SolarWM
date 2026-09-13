@@ -174,6 +174,52 @@ def _validate_transport(data: Mapping[str, Any]) -> None:
         )
 
 
+def _validate_runtime_caches(config: Mapping[str, Any]) -> None:
+    runtime = _mapping(config, "runtime")
+    transport = _mapping(_mapping(config, "data"), "transport")
+    is_gcs = str(transport.get("kind", "")).strip().lower() == "gcs"
+    data_cache_dir = runtime.get("data_cache_dir")
+    data_cache_max_gib = runtime.get("data_cache_max_gib")
+    validation_cache_dir = runtime.get("validation_cache_dir")
+    validation_cache_max_gib = runtime.get("validation_cache_max_gib")
+    _require(
+        is_gcs
+        or all(
+            value is None
+            for value in (
+                data_cache_dir,
+                data_cache_max_gib,
+                validation_cache_dir,
+                validation_cache_max_gib,
+            )
+        ),
+        "runtime cache overrides are valid only for gcs data transport",
+    )
+    if data_cache_dir is not None:
+        _require(
+            str(data_cache_dir).startswith("/"),
+            "runtime.data_cache_dir must be absolute",
+        )
+    if data_cache_max_gib is not None:
+        _require(
+            _int(data_cache_max_gib, "runtime.data_cache_max_gib") > 0,
+            "runtime.data_cache_max_gib must be positive",
+        )
+    _require(
+        (validation_cache_dir is None) == (validation_cache_max_gib is None),
+        "runtime validation cache directory and size must be configured together",
+    )
+    if validation_cache_dir is not None:
+        _require(
+            str(validation_cache_dir).startswith("/"),
+            "runtime.validation_cache_dir must be absolute",
+        )
+        _require(
+            _int(validation_cache_max_gib, "runtime.validation_cache_max_gib") > 0,
+            "runtime.validation_cache_max_gib must be positive",
+        )
+
+
 def _validate_data(config: Mapping[str, Any], route: Route, profile: FamilyProfile) -> None:
     data = _mapping(config, "data")
     encoding = str(data.get("encoding", "")).strip().lower()
@@ -563,7 +609,10 @@ def _validate_checkpoint(config: Mapping[str, Any], route: Route) -> None:
         "checkpoint.mode is invalid",
     )
     if route.stage == "stage1":
-        _require(mode == "weights_only", "Stage1 must start as weights_only from Stage0.5")
+        _require(
+            mode in {"weights_only", "full_resume"},
+            "Stage1 must start weights-only from Stage0.5 or fully resume Stage1",
+        )
     elif route.stage == "stage2":
         _require(mode == "stage2_roles", "Stage2 requires explicit three-role initialization")
     elif _int(_mapping(config, "data").get("pixel_frames"), "data.pixel_frames") == 153:
@@ -603,17 +652,24 @@ def _validate_checkpoint(config: Mapping[str, Any], route: Route) -> None:
                 "camera translation transform mismatch is allowed only for an "
                 "explicit weights-only ablation",
             )
-        _require(
-            str(source.get("stage", "")) == "stage0p5",
-            "Wan initialization requires a Stage0.5 source",
+        expected_source_stage = route.stage if mode == "full_resume" else "stage0p5"
+        expected_source_objective = (
+            str(_mapping(config, "train").get("objective"))
+            if mode == "full_resume"
+            else "flow_matching"
         )
         _require(
-            str(source.get("objective", "")) == "flow_matching",
-            "Wan initialization requires a flow-matching source",
+            str(source.get("stage", "")) == expected_source_stage,
+            f"Wan {mode} initialization requires a {expected_source_stage} source",
+        )
+        _require(
+            str(source.get("objective", "")) == expected_source_objective,
+            f"Wan {mode} initialization requires objective {expected_source_objective}",
         )
     if mode == "full_resume":
+        resume_step = _int(checkpoint.get("resume_step", 0), "checkpoint.resume_step")
         _require(
-            _int(checkpoint.get("resume_step", 0), "checkpoint.resume_step") > 0,
+            resume_step > 0,
             "full resume requires a positive checkpoint.resume_step",
         )
     if mode == "weights_only" and route.stage == "stage1":
@@ -671,6 +727,7 @@ def validate_wan_config(config: Mapping[str, Any], *, expected_family: str) -> R
     _validate_distributed(config, profile)
     _validate_stage(config, route, profile)
     _validate_checkpoint(config, route)
+    _validate_runtime_caches(config)
     return route
 
 

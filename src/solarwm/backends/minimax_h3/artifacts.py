@@ -78,9 +78,12 @@ def h3_encoder_contract(
     )
 
 
-def h3_silence_profile() -> dict[str, Any]:
+def h3_silence_profile(*, pixel_frames: int = 158) -> dict[str, Any]:
     """Readable identity for the supported AudioVAE-encoded silence condition."""
 
+    lengths = {153: 255, 158: 263, 170: 283}
+    if pixel_frames not in lengths:
+        raise DataContractError("unsupported H3 silence duration")
     return {
         "schema": "solarwm.minimax-h3-silence-profile.v1",
         "artifact": "official-audiovae-encoded-stereo-zero-waveform",
@@ -91,8 +94,8 @@ def h3_silence_profile() -> dict[str, Any]:
         "normalization": "audio_vae.config.latents_mean_std",
         "posterior": "mode",
         "tensor": {
-            "key": "silence_158f",
-            "shape": [2, 32, 263],
+            "key": f"silence_{pixel_frames}f",
+            "shape": [2, 32, lengths[pixel_frames]],
             "dtype": "bfloat16",
         },
     }
@@ -161,6 +164,9 @@ class H3ArtifactBatch:
     source_fps: float | None
     validation_slot: int | None = None
     validation_noise_seed: int | None = None
+    rollout_camera_viewmats: Any = None
+    rollout_camera_K: Any = None
+    dataset_source: str = ""
 
 
 @dataclass
@@ -381,9 +387,12 @@ def _member_for(row: Any) -> str:
     raise DataContractError(f"H3 index row {row.sample_id!r} lacks a tensor member")
 
 
-def align_h3_camera(tensors: Mapping[str, Any]) -> tuple[Any, Any]:
+def align_h3_camera(tensors: Mapping[str, Any], *, audit_latents: int = 47) -> tuple[Any, Any]:
     """Validate and convert encoded absolute cameras to H3 model rows."""
     import torch
+
+    if audit_latents not in {45, 47}:
+        raise DataContractError("H3 camera audit must cover 45 Stage1 or 47 physical latents")
 
     def invert_se3_torch(matrices: Any) -> Any:
         rotation = matrices[..., :3, :3]
@@ -417,7 +426,7 @@ def align_h3_camera(tensors: Mapping[str, Any]) -> tuple[Any, Any]:
         if not bool(torch.isfinite(views).all()) or not bool(torch.isfinite(intrinsics).all()):
             raise DataContractError("token camera artifact contains non-finite values")
         validate_normalized_intrinsics(intrinsics.cpu().numpy())
-        if float(views.abs().max().item()) > 20.0:
+        if float(views[: audit_latents * 1008].abs().max().item()) > 20.0:
             raise H3CameraFilterError("token camera artifact exceeds the magnitude guard")
         return views, intrinsics
     if "camera_c2w" not in tensors or "camera_K" not in tensors:
@@ -445,8 +454,8 @@ def align_h3_camera(tensors: Mapping[str, Any]) -> tuple[Any, Any]:
     relative_c2w = torch.matmul(first_w2c.unsqueeze(0), c2w)
     relative_c2w[0] = torch.eye(4, dtype=relative_c2w.dtype)
     views = invert_se3_torch(relative_c2w).contiguous()
-    translation = torch.linalg.vector_norm(views[:, :3, 3], dim=-1)
-    if float(translation.max()) > 20.0 or float(views.abs().max()) > 20.0:
+    translation = torch.linalg.vector_norm(views[:audit_latents, :3, 3], dim=-1)
+    if float(translation.max()) > 20.0 or float(views[:audit_latents].abs().max()) > 20.0:
         raise H3CameraFilterError("H3 camera exceeds the magnitude guards")
     return views, K.contiguous()
 
@@ -472,7 +481,9 @@ class H3PreencodedStream:
         fixed_validation_selection_seed: int = 0,
         fixed_validation_noise_seed: int = 0,
         fixed_validation_sample_ids: Sequence[str] | None = None,
+        camera_audit_latents: int = 47,
     ) -> None:
+        self.camera_audit_latents = int(camera_audit_latents)
         rows = read_index(index)
         normalized: list[IndexRow] = []
         for row in rows:
@@ -667,6 +678,11 @@ class H3PreencodedStream:
         prefetcher = getattr(self, "_shard_prefetcher", None)
         if prefetcher is not None:
             prefetcher.prepare(plan)
+        return self.read_artifact(row, plan)
+
+    def read_artifact(self, row: IndexRow, plan: SamplePlan) -> H3ArtifactBatch:
+        """Materialize a frozen occurrence without advancing the training reader."""
+
         row_profile = row.values.get("encoder_profile")
         if row_profile is not None and row_profile != self.encoder_profile:
             raise DataContractError(f"H3 sample {row.sample_id!r} encoder profile differs")
@@ -722,7 +738,7 @@ class H3PreencodedStream:
             raise DataContractError("H3 source indices must be 158 exact contiguous frames")
         if tuple(int(value) for value in indices.tolist()) != tuple(plan.source_frame_indices):
             raise DataContractError("H3 tensor source indices differ from the sample plan")
-        views, K = align_h3_camera(tensors)
+        views, K = align_h3_camera(tensors, audit_latents=self.camera_audit_latents)
         metadata = row.values.get("metadata", {})
         source_fps = row.values.get("fps")
         if source_fps is None and isinstance(metadata, Mapping):
@@ -745,10 +761,13 @@ class H3PreencodedStream:
             source_fps=source_fps,
             validation_slot=None,
             validation_noise_seed=None,
+            dataset_source=row.sample_id.split("/")[0],
         )
 
 
-def load_silence_latents(path: str | Path) -> tuple[Any, Mapping[str, Any]]:
+def load_silence_latents(
+    path: str | Path, *, pixel_frames: int = 158
+) -> tuple[Any, Mapping[str, Any]]:
     """Load the official AudioVAE-encoded 158f silence tensor ``[2,32,263]``."""
 
     source = Path(path)
@@ -760,14 +779,21 @@ def load_silence_latents(path: str | Path) -> tuple[Any, Mapping[str, Any]]:
         tensors = load_file(str(source), device="cpu")
     except (ImportError, ValueError) as exc:
         raise DataContractError("H3 silence artifact is not valid safetensors") from exc
-    if "silence_158f" not in tensors:
-        raise DataContractError("H3 silence artifact lacks the required 'silence_158f' tensor")
-    value = tensors["silence_158f"].contiguous()
-    if tuple(value.shape) != (2, 32, 263) or str(value.dtype).removeprefix("torch.") != "bfloat16":
-        raise DataContractError("H3 silence must be BF16 [2,32,263]")
+    lengths = {153: 255, 158: 263, 170: 283}
+    if pixel_frames not in lengths:
+        raise DataContractError("H3 silence supports the encoded 153/158/170-frame profiles")
+    key = f"silence_{pixel_frames}f"
+    if key not in tensors:
+        raise DataContractError(f"H3 silence artifact lacks the required {key!r} tensor")
+    value = tensors[key].contiguous()
+    if (
+        tuple(value.shape) != (2, 32, lengths[pixel_frames])
+        or str(value.dtype).removeprefix("torch.") != "bfloat16"
+    ):
+        raise DataContractError(f"H3 silence must be BF16 [2,32,{lengths[pixel_frames]}]")
     if not bool(value.isfinite().all()):
         raise DataContractError("H3 silence contains non-finite values")
-    return value, h3_silence_profile()
+    return value, h3_silence_profile(pixel_frames=pixel_frames)
 
 
 __all__ = [

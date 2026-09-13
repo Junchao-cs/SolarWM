@@ -63,17 +63,18 @@ class StepPolicy:
     save_every: int = 0
     validate_every: int = 0
     validation_steps: tuple[int, ...] = ()
+    save_steps: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_steps < 1 or self.grad_accum < 1:
             raise BackendContractError("max_steps and grad_accum must be positive")
         if self.save_every < 0 or self.validate_every < 0:
             raise BackendContractError("save/validate intervals must be non-negative")
-        if any(step < 1 for step in self.validation_steps):
+        if any(step < 1 for step in (*self.validation_steps, *self.save_steps)):
             raise BackendContractError("validation_steps must be positive")
 
     def should_save(self, step: int) -> bool:
-        return bool(self.save_every and step % self.save_every == 0)
+        return step in self.save_steps or bool(self.save_every and step % self.save_every == 0)
 
     def should_validate(self, step: int) -> bool:
         return step in self.validation_steps or bool(

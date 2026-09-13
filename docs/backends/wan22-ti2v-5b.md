@@ -16,8 +16,8 @@ Stage0.5 bidirectional FM -> Stage1 TF-AnyFlow -> Stage2 DMD via SGF
 | Stage2 DMD via SGF 81f | raw-WDS | Available |
 | Inference | raw-WDS test payload | Available |
 
-The recommended starting point is the 153f latent-only recipe in the
-[Quickstart](../quickstart.md). Its latent generation is available on
+The recommended starting point is the 153f latent-only recipe below. Its
+latent generation is available on
 [ModelScope](https://modelscope.ai/datasets/Junchao-cs/SolarWM-Data_Latent-WDS_wan22-ti2v5b-153f-480p-v1).
 Use [Download and access](../data-access.md) only if you need raw-WDS for the
 81f, Stage1, Stage2, or inference routes.
@@ -47,6 +47,18 @@ hf download junchaoh-cs/SolarWM \
 Keep each downloaded checkpoint directory intact. Commands below refer to the
 `model.pt` file when initializing training and to the directory when running
 standalone inference.
+
+## Full-resume compatibility
+
+To resume training, use the complete `checkpoint_model_*` directory with the
+same stage and objective. A standalone `model.pt` is only for weights
+initialization; it does not restore the optimizer, data position, or RNG state.
+
+Stage0.5/Stage1 full resume requires `rank_runtime_state` in `model.pt`, with
+one reader and RNG state per rank. Stage2 stores these under `rng_state_by_rank`
+in `model.pt` and also requires the matching `critic.pt`. Checkpoints missing
+the reader/RNG state are rejected for full resume; they remain usable for
+weights-only initialization where the stage contract permits it.
 
 ## Recommended: Stage0.5 153f with released latents
 
@@ -156,7 +168,8 @@ configured 16 fps, a 960-frame camera track produces 240 latents and 957 model
 frames. Publication repeats the final generated frame three times so the
 generated and comparison MP4s, and their camera trajectory, all contain 960
 frames. Outputs longer than 60 latents are VAE-decoded as consecutive 60-latent
-tiles with one continuous temporal cache.
+tiles with one continuous temporal cache. Hour-scale outputs use smaller
+decode tiles and stream video to disk to bound memory use.
 
 Camera-length inference defaults to `inference.output_layout=dataset_triplet_v1`.
 `runtime.output_dir` is the shared publication root, while `inference.run_id`

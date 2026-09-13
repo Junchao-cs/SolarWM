@@ -142,9 +142,12 @@ def _normalise_K(
     candidate: np.ndarray | None,
     source_indices: Sequence[int],
     transform: Mapping[str, int],
+    *,
+    enforce_focal_guard: bool = True,
 ) -> np.ndarray:
+    count = len(source_indices)
     if candidate is None:
-        output = np.zeros((158, 3, 3), dtype=np.float32)
+        output = np.zeros((count, 3, 3), dtype=np.float32)
         output[:, 0, 0] = 969.6969696969696 / (960.0 * 2.0)
         output[:, 1, 1] = 969.6969696969696 / (540.0 * 2.0)
         output[:, 0, 2] = output[:, 1, 2] = 0.5
@@ -153,12 +156,12 @@ def _normalise_K(
     value = np.asarray(candidate, dtype=np.float64)
     maximum = max(source_indices)
     if value.shape == (3, 3):
-        matrices = np.broadcast_to(value, (158, 3, 3)).copy()
+        matrices = np.broadcast_to(value, (count, 3, 3)).copy()
     elif value.ndim == 3 and value.shape[1:] == (3, 3):
         if value.shape[0] > maximum:
             matrices = value[np.asarray(source_indices)].copy()
         elif value.shape[0] == 1:
-            matrices = np.broadcast_to(value, (158, 3, 3)).copy()
+            matrices = np.broadcast_to(value, (count, 3, 3)).copy()
         else:
             raise DataContractError("H3 camera K cannot align to source indices")
     elif value.shape == (4,) or (value.ndim == 2 and value.shape[1] == 4):
@@ -166,10 +169,10 @@ def _normalise_K(
         if vectors.shape[0] > maximum:
             vectors = vectors[np.asarray(source_indices)]
         elif vectors.shape[0] == 1:
-            vectors = np.broadcast_to(vectors, (158, 4))
+            vectors = np.broadcast_to(vectors, (count, 4))
         else:
             raise DataContractError("H3 camera intrinsics vectors cannot align")
-        matrices = np.zeros((158, 3, 3), dtype=np.float64)
+        matrices = np.zeros((count, 3, 3), dtype=np.float64)
         matrices[:, 0, 0] = vectors[:, 0]
         matrices[:, 1, 1] = vectors[:, 1]
         matrices[:, 0, 2] = vectors[:, 2]
@@ -196,7 +199,9 @@ def _normalise_K(
     matrices[:, 1, :] /= transform["target_h"]
     matrices[:, 2, :] = (0, 0, 1)
     focal = matrices[:, (0, 1), (0, 1)]
-    if not np.isfinite(matrices).all() or np.any(focal <= 0) or np.any(focal > 4):
+    if not np.isfinite(matrices).all() or (
+        enforce_focal_guard and (np.any(focal <= 0) or np.any(focal > 4))
+    ):
         raise DataContractError("H3 camera K exceeds the normalized PRoPE guards")
     return matrices.astype(np.float32)
 

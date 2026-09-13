@@ -25,6 +25,7 @@ from solarwm.data.sampling import SamplePlan, SamplingConfig, frame_offsets
 from solarwm.data.transport import resolver_from_config
 from solarwm.errors import BackendContractError, DataContractError
 from solarwm.inference import (
+    GeneratedFile,
     GeneratedSample,
     InferenceCase,
     InferenceEngine,
@@ -73,6 +74,7 @@ class _PreparedCase:
     source_pixel_frames: int
     publication_c2w: np.ndarray | None = None
     publication_pixel_frames: int | None = None
+    repeat_first_frame: bool = False
 
 
 @dataclass(frozen=True)
@@ -242,7 +244,7 @@ def _camera_length_rollout_latents(
     output_fps: float,
     num_frame_per_block: int,
 ) -> int:
-    """Use the longest source-backed rollout that fits complete Wan chunks."""
+    """Return the smallest chunk-aligned rollout covering the full camera."""
 
     if num_frames < 1 or num_frame_per_block < 1:
         raise DataContractError("camera-length rollout values must be positive")
@@ -254,27 +256,10 @@ def _camera_length_rollout_latents(
     ):
         raise DataContractError("camera-length rollout requires positive finite fps")
 
-    available_pixels = int(np.floor((num_frames - 1) * output_fps / source_fps)) + 1
-    available_latents = 1 + (available_pixels - 1) // 4
+    publication_pixels = int(np.floor((num_frames - 1) * output_fps / source_fps)) + 1
+    required_latents = 1 + int(np.ceil((publication_pixels - 1) / 4))
     block = int(num_frame_per_block)
-    selected = (available_latents // block) * block
-
-    def fits(latent_frames: int) -> bool:
-        output_pixel_frames = 1 + 4 * (latent_frames - 1)
-        last_source_frame = int(np.rint((output_pixel_frames - 1) * source_fps / output_fps))
-        return last_source_frame < num_frames
-
-    while selected >= block and not fits(selected):
-        selected -= block
-    while fits(selected + block):
-        selected += block
-    if selected < block:
-        minimum_pixels = 1 + 4 * (block - 1)
-        raise DataContractError(
-            f"source num_frames={num_frames} cannot support one {block}-latent "
-            f"chunk ({minimum_pixels} output frames)"
-        )
-    return selected
+    return max(block, ((required_latents + block - 1) // block) * block)
 
 
 def _camera_publication_source_frame_indices(
@@ -409,6 +394,7 @@ def _plan_case(
     base_noise_seed: int,
     variable_rollout_by_source: bool = False,
     start_at_first_frame: bool = False,
+    hold_last_source_frame: bool = False,
 ) -> tuple[SamplePlan, int, bool]:
     source_fps = _source_fps(row)
     offsets = frame_offsets(
@@ -423,11 +409,14 @@ def _plan_case(
         ),
         source_fps,
     )
-    max_start = _num_frames(row) - int(offsets[-1]) - 1
+    source_frames = _num_frames(row)
+    max_start = source_frames - int(offsets[-1]) - 1
     if max_start < 0:
-        raise DataContractError(
-            f"validation source {row.sample_id!r} is shorter than {pixel_frames} output frames"
-        )
+        if not hold_last_source_frame or not start_at_first_frame:
+            raise DataContractError(
+                f"validation source {row.sample_id!r} is shorter than {pixel_frames} output frames"
+            )
+        max_start = 0
     raw_start = row.values.get("start_frame")
     if start_at_first_frame:
         start = 0
@@ -457,8 +446,19 @@ def _plan_case(
         )
         start = int(np.random.RandomState(seed).randint(0, max_start + 1))
         start_adjusted = True
-    noise_seed = _seed_for("validation-noise", 0, slot, base_noise_seed)
-    indices = tuple(int(start + value) for value in offsets)
+    raw_noise_seed = row.values.get("validation_noise_seed")
+    if raw_noise_seed is None:
+        noise_seed = _seed_for("validation-noise", 0, slot, base_noise_seed)
+    else:
+        if type(raw_noise_seed) is not int or not 0 <= raw_noise_seed < 2**63:
+            raise DataContractError(
+                f"validation row {row.sample_id!r} has invalid validation_noise_seed"
+            )
+        noise_seed = raw_noise_seed
+    indices = tuple(
+        min(int(start + value), source_frames - 1) if hold_last_source_frame else int(start + value)
+        for value in offsets
+    )
     return (
         SamplePlan(
             sample_id=row.sample_id,
@@ -680,13 +680,291 @@ def _encode_compare_mp4(
 ) -> bytes:
     """Adapt Wan tensors to the shared comparison encoder."""
 
+    reference = prepared.pixels
+    if prepared.repeat_first_frame:
+        reference = reference[:1].expand(int(generated.shape[1]), -1, -1, -1)
     return encode_compare_mp4(
-        prepared.pixels.unsqueeze(0),
+        reference.unsqueeze(0),
         generated,
         fps=fps,
         layout="btchw",
         value_range="minus_one_one",
     )
+
+
+class _RawVideoFileWriter:
+    """Stream RGB frames into a private H.264 file on the output filesystem."""
+
+    def __init__(self, path: Path, *, fps: float, height: int, width: int) -> None:
+        executable = shutil.which("ffmpeg")
+        if executable is None:
+            raise BackendContractError("Wan streaming inference requires ffmpeg")
+        self.path = path
+        self.height = int(height)
+        self.width = int(width)
+        self._closed = False
+        self._process = subprocess.Popen(
+            [
+                executable,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-s:v",
+                f"{self.width}x{self.height}",
+                "-r",
+                f"{float(fps):g}",
+                "-i",
+                "pipe:0",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-y",
+                str(path),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+    def write(self, frames: np.ndarray) -> None:
+        expected = (self.height, self.width, 3)
+        if frames.ndim != 4 or tuple(frames.shape[1:]) != expected or frames.dtype != np.uint8:
+            raise BackendContractError(
+                "Wan streaming encoder received invalid RGB frames: "
+                f"shape={frames.shape} dtype={frames.dtype} expected=[T,{expected}] uint8"
+            )
+        stream = self._process.stdin
+        if self._closed or stream is None:
+            raise BackendContractError("Wan streaming encoder is already closed")
+        try:
+            remaining = memoryview(np.ascontiguousarray(frames)).cast("B")
+            while remaining:
+                written = stream.write(remaining)
+                if written is None or written <= 0:
+                    raise BrokenPipeError("ffmpeg input made no progress")
+                remaining = remaining[written:]
+        except (BrokenPipeError, OSError) as exc:
+            raise BackendContractError(
+                f"ffmpeg stopped while encoding Wan streaming output: {self._error_tail()}"
+            ) from exc
+
+    def _error_tail(self) -> str:
+        stream = self._process.stderr
+        if stream is None:
+            return "stderr unavailable"
+        try:
+            return stream.read().decode("utf-8", errors="replace")[-2000:]
+        except OSError:
+            return "stderr unavailable"
+
+    def finish(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._process.stdin is not None:
+            self._process.stdin.close()
+        detail = self._error_tail()
+        returncode = self._process.wait()
+        if returncode or not self.path.is_file() or self.path.stat().st_size <= 0:
+            raise BackendContractError(f"ffmpeg failed to encode Wan streaming output: {detail}")
+        with self.path.open("rb") as handle:
+            os.fsync(handle.fileno())
+
+    def abort(self) -> None:
+        if self._process.poll() is None:
+            self._process.kill()
+        if self._process.stdin is not None and not self._process.stdin.closed:
+            self._process.stdin.close()
+        self._process.wait()
+        self._closed = True
+
+
+@dataclass(frozen=True)
+class _StreamedStage2Artifacts:
+    video: GeneratedFile
+    compare: GeneratedFile
+    shape: tuple[int, ...]
+
+
+def _temporary_mp4(root: Path, *, label: str) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    descriptor, value = tempfile.mkstemp(prefix=f".solarwm-{label}-", suffix=".mp4", dir=root)
+    os.close(descriptor)
+    return Path(value)
+
+
+def _encode_stage2_streaming(
+    vae: Any,
+    latents: Any,
+    prepared: _PreparedCase,
+    *,
+    target_pixel_frames: int,
+    fps: float,
+    temporary_root: Path,
+    chunk_latent_frames: int,
+) -> _StreamedStage2Artifacts:
+    """Decode, compare, and encode a long Stage2 rollout with bounded host memory."""
+
+    import torch
+
+    if target_pixel_frames < 1:
+        raise BackendContractError("Wan streaming publication length must be positive")
+    expected_model_frames = 1 + 4 * (int(latents.shape[1]) - 1)
+    pixels = prepared.pixels
+    if pixels.ndim != 4 or int(pixels.shape[1]) != 3 or int(pixels.shape[0]) < 1:
+        raise BackendContractError(
+            f"Wan streaming comparison input has invalid shape {tuple(pixels.shape)}"
+        )
+    repeat_first = bool(prepared.repeat_first_frame)
+    if not repeat_first and int(pixels.shape[0]) != target_pixel_frames:
+        raise BackendContractError(
+            "Wan streaming comparison input length differs from publication length"
+        )
+
+    video_path = _temporary_mp4(temporary_root, label="generate")
+    compare_path = _temporary_mp4(temporary_root, label="compare")
+    video_writer: _RawVideoFileWriter | None = None
+    compare_writer: _RawVideoFileWriter | None = None
+    decoded_model_frames = 0
+    written_frames = 0
+    last_generated: Any | None = None
+    channels = 0
+    height = 0
+    width = 0
+
+    def write_chunk(chunk: Any, *, reference_start: int) -> None:
+        nonlocal video_writer, compare_writer, channels, height, width, last_generated
+        if chunk.ndim != 5 or int(chunk.shape[0]) != 1 or int(chunk.shape[2]) != 3:
+            raise BackendContractError(
+                f"Wan streaming VAE returned invalid BTCHW tile {tuple(chunk.shape)}"
+            )
+        count = int(chunk.shape[1])
+        channels, height, width = (int(value) for value in chunk.shape[2:])
+        if video_writer is None:
+            video_writer = _RawVideoFileWriter(
+                video_path,
+                fps=fps,
+                height=height,
+                width=width,
+            )
+            compare_writer = _RawVideoFileWriter(
+                compare_path,
+                fps=fps,
+                height=height,
+                width=width * 2,
+            )
+        if video_writer.height != height or video_writer.width != width:
+            raise BackendContractError("Wan streaming VAE tile dimensions changed")
+
+        generated = chunk[0].detach().to(device="cpu", dtype=torch.float32)
+        if not bool(torch.isfinite(generated).all().item()):
+            raise BackendContractError("Wan streaming VAE decode produced non-finite pixels")
+        generated = generated.clamp(-1, 1)
+        generated_rgb = (
+            ((generated + 1.0) * 127.5)
+            .round()
+            .to(torch.uint8)
+            .permute(0, 2, 3, 1)
+            .contiguous()
+            .numpy()
+        )
+        video_writer.write(generated_rgb)
+
+        if repeat_first:
+            reference = pixels[:1].expand(count, -1, -1, -1)
+        else:
+            reference = pixels[reference_start : reference_start + count]
+        if int(reference.shape[0]) != count or tuple(reference.shape[1:]) != (
+            channels,
+            height,
+            width,
+        ):
+            raise BackendContractError("Wan streaming comparison tile dimensions differ")
+        reference_rgb = (
+            torch.nan_to_num(
+                reference.detach().to(device="cpu", dtype=torch.float32).mul(0.5).add(0.5),
+                nan=0.0,
+                posinf=1.0,
+                neginf=0.0,
+            )
+            .clamp_(0, 1)
+            .mul_(255.0)
+            .to(torch.uint8)
+            .permute(0, 2, 3, 1)
+            .contiguous()
+            .numpy()
+        )
+        generated_compare_rgb = (
+            generated.mul(0.5)
+            .add(0.5)
+            .clamp_(0, 1)
+            .mul_(255.0)
+            .to(torch.uint8)
+            .permute(0, 2, 3, 1)
+            .contiguous()
+            .numpy()
+        )
+        compare_writer.write(np.concatenate((reference_rgb, generated_compare_rgb), axis=2))
+        last_generated = chunk[:, -1:].detach().cpu()
+
+    try:
+        decode_chunks = getattr(vae, "decode_streaming_chunks", None)
+        if not callable(decode_chunks):
+            raise BackendContractError(
+                "hour-scale Wan inference requires chunk-yielding VAE decode"
+            )
+        for chunk in decode_chunks(latents, chunk_latent_frames=chunk_latent_frames):
+            count = int(chunk.shape[1])
+            if decoded_model_frames + count > expected_model_frames:
+                raise BackendContractError("Wan streaming VAE decoded too many frames")
+            remaining = target_pixel_frames - written_frames
+            if remaining > 0:
+                published = chunk[:, : min(count, remaining)]
+                write_chunk(published, reference_start=written_frames)
+                written_frames += int(published.shape[1])
+            decoded_model_frames += count
+        if decoded_model_frames != expected_model_frames or last_generated is None:
+            raise BackendContractError(
+                "Wan streaming VAE frame count differs from latent-aligned output: "
+                f"{decoded_model_frames} != {expected_model_frames}"
+            )
+        tail_frames = target_pixel_frames - written_frames
+        if tail_frames:
+            write_chunk(
+                last_generated.expand(-1, tail_frames, -1, -1, -1),
+                reference_start=written_frames,
+            )
+            written_frames += tail_frames
+        if written_frames != target_pixel_frames:
+            raise BackendContractError(
+                "Wan streaming encoder frame count differs from publication length: "
+                f"{written_frames} != {target_pixel_frames}"
+            )
+        if video_writer is None or compare_writer is None:
+            raise BackendContractError("Wan streaming VAE produced no encodable frames")
+        video_writer.finish()
+        compare_writer.finish()
+        return _StreamedStage2Artifacts(
+            video=GeneratedFile(video_path),
+            compare=GeneratedFile(compare_path),
+            shape=(1, target_pixel_frames, channels, height, width),
+        )
+    except Exception:
+        if video_writer is not None:
+            video_writer.abort()
+        if compare_writer is not None:
+            compare_writer.abort()
+        video_path.unlink(missing_ok=True)
+        compare_path.unlink(missing_ok=True)
+        raise
 
 
 class CudaWanGenerationAdapter:
@@ -716,9 +994,12 @@ class CudaWanGenerationAdapter:
         self.diffusion, self.text_encoder, self.vae, self.base_report = build_online_components(
             config
         )
-        self.diffusion.module.eval().requires_grad_(False).to(self.device)
-        self.text_encoder.to(self.device)
-        self.vae.to(self.device)
+        inference_dtype = torch.bfloat16
+        self.diffusion.module.eval().requires_grad_(False).to(
+            device=self.device, dtype=inference_dtype
+        )
+        self.text_encoder.to(self.device, dtype=inference_dtype)
+        self.vae.to(self.device, dtype=inference_dtype)
         self._loaded_role: str | None = None
         self._prepared: dict[int, _PreparedCase] = {}
         self._deferred_camera_inputs: _DeferredCameraInputs | None = None
@@ -812,6 +1093,13 @@ class CudaWanGenerationAdapter:
         )
         publication_indices = descriptor.publication_source_frame_indices
         decode_indices = publication_indices or descriptor.sample_plan.source_frame_indices
+        video_manifest = raw.manifest.get("video", {})
+        repeat_first_frame = bool(
+            isinstance(video_manifest, Mapping)
+            and str(video_manifest.get("frame_content", "")) == "static_first_frame"
+        )
+        if repeat_first_frame:
+            decode_indices = decode_indices[:1]
         pixels = decode_video(
             raw.members["video_member"],
             decode_indices,
@@ -833,6 +1121,7 @@ class CudaWanGenerationAdapter:
             source_pixel_frames=descriptor.source_pixel_frames,
             publication_c2w=publication_c2w,
             publication_pixel_frames=publication_pixel_frames,
+            repeat_first_frame=repeat_first_frame,
         )
 
     def weight_id(self, role: str) -> str:
@@ -930,10 +1219,16 @@ class CudaWanGenerationAdapter:
         dp_world_size = int(self.topology.dp_world_size)
         dp_rank = int(self.topology.dp_rank)
         transport = data["transport"]
+        runtime = self.config.get("runtime", {})
         resolver = resolver_from_config(
             str(transport["root"]),
-            cache_dir=transport.get("cache_dir"),
-            max_gib=float(transport.get("cache_max_gib", 256)),
+            cache_dir=runtime.get("validation_cache_dir", transport.get("cache_dir")),
+            max_gib=float(
+                runtime.get(
+                    "validation_cache_max_gib",
+                    transport.get("cache_max_gib", 256),
+                )
+            ),
         )
 
         def validation_guard(name: str) -> float | None:
@@ -1006,6 +1301,7 @@ class CudaWanGenerationAdapter:
                     base_noise_seed=plan.noise_seed,
                     variable_rollout_by_source=variable_rollout,
                     start_at_first_frame=camera_length,
+                    hold_last_source_frame=camera_length,
                 )
                 raw = (camera_reader if camera_length else reader).materialize(sample_plan)
                 pixels = None
@@ -1288,11 +1584,19 @@ class CudaWanGenerationAdapter:
         output_pixel_frames = 1 + 4 * (output_latent_frames - 1)
         if output_pixel_frames > prepared.source_pixel_frames:
             raise BackendContractError("Wan generation pass exceeds materialized source window")
-        pixels = prepared.pixels[:output_pixel_frames].unsqueeze(0).to(self.device)
+        condition_frames = 1 if self.family == "wan22_ti2v_5b" else output_pixel_frames
+        pixels = (
+            prepared.pixels[:condition_frames]
+            .unsqueeze(0)
+            .to(
+                device=self.device,
+                dtype=torch.bfloat16,
+            )
+        )
         with torch.no_grad():
-            first_latent = self.vae.encode(
-                pixels[:, :1].permute(0, 2, 1, 3, 4).contiguous().float()
-            ).to(torch.bfloat16)
+            first_latent = self.vae.encode(pixels[:, :1].permute(0, 2, 1, 3, 4).contiguous()).to(
+                torch.bfloat16
+            )
             condition = self.text_encoder([case.prompt])
             model_y = (
                 build_official_i2v_y(pixels, self.vae) if self.family == "wan22_i2v_a14b" else None

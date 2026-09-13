@@ -15,7 +15,7 @@ import math
 import os
 import random
 from collections import OrderedDict
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -64,6 +64,8 @@ from .stage0p5 import expand_timesteps_to_tokens
 _CHECKPOINT_FORMAT = "solarwm.wan22-stage2-sgf.v1"
 _TORCHRUN_OWNER_ENV = "SOLARWM_TORCHRUN_LIFECYCLE_OWNER"
 _STREAMING_VAE_LATENT_CHUNK = 60
+_FILE_STREAMING_PIXEL_THRESHOLD = 4096
+_FILE_STREAMING_VAE_LATENT_CHUNK = 12
 
 
 class Stage2GenerationRunner(Protocol):
@@ -683,7 +685,7 @@ def _stage2_self_forcing_latents(
                     (1, chunk),
                     float(step.item()),
                     device=provider.device,
-                    dtype=torch.float32,
+                    dtype=output.dtype,
                 )
                 if start == 0:
                     timestep[:, 0] = 0.0
@@ -735,7 +737,7 @@ def _stage2_self_forcing_latents(
                     f"Stage2 generation chunk {start // chunk} is non-finite"
                 )
             output[:, start:end] = latents
-            commit_timestep = torch.zeros((1, chunk), device=provider.device, dtype=torch.float32)
+            commit_timestep = torch.zeros((1, chunk), device=provider.device, dtype=output.dtype)
             with (
                 torch.no_grad(),
                 torch.autocast(
@@ -783,7 +785,7 @@ def _stage2_generated_sample(
     from solarwm.inference import GeneratedSample
 
     from ..generation import GenerationPass
-    from .inference import _encode_compare_mp4, _encode_mp4
+    from .inference import _encode_compare_mp4, _encode_mp4, _encode_stage2_streaming
 
     metadata = case.metadata.get("generation_pass")
     if not isinstance(metadata, Mapping):
@@ -834,90 +836,143 @@ def _stage2_generated_sample(
             )
         )
         output_latents = latents[:, :output_latent_frames].contiguous()
-        if output_latent_frames > _STREAMING_VAE_LATENT_CHUNK:
-            decoded = provider.vae.decode_streaming(
-                output_latents,
-                chunk_latent_frames=_STREAMING_VAE_LATENT_CHUNK,
-            )
-            vae_decode = {
-                "mode": "continuous_cached_tiles",
-                "chunk_latent_frames": _STREAMING_VAE_LATENT_CHUNK,
-            }
-        else:
-            decoded = provider.vae.decode(output_latents, use_cache=False)
-            vae_decode = {"mode": "direct", "chunk_latent_frames": output_latent_frames}
-    finite_fraction = float(torch.isfinite(decoded).float().mean().item())
-    if finite_fraction != 1.0:
-        raise BackendContractError("Stage2 VAE decode produced non-finite pixels")
-    prepared = provider._prepared.get(case.slot)
-    if prepared is None:
-        raise BackendContractError(f"Stage2 adapter has no comparison input for slot {case.slot}")
-    camera_artifact: bytes | None = None
-    publication_provenance: dict[str, Any] = {}
-    publication_pixel_frames = getattr(prepared, "publication_pixel_frames", None)
-    if publication_pixel_frames is not None:
-        model_output_pixel_frames = int(decoded.shape[1])
-        target_pixel_frames = int(publication_pixel_frames)
-        if target_pixel_frames < model_output_pixel_frames:
+        prepared = provider._prepared.get(case.slot)
+        if prepared is None:
             raise BackendContractError(
-                "camera publication length is shorter than the Stage2 model output"
+                f"Stage2 adapter has no comparison input for slot {case.slot}"
             )
-        if int(prepared.pixels.shape[0]) != target_pixel_frames:
+        model_output_pixel_frames = 1 + 4 * (output_latent_frames - 1)
+        publication_pixel_frames = getattr(prepared, "publication_pixel_frames", None)
+        target_pixel_frames = (
+            int(publication_pixel_frames)
+            if publication_pixel_frames is not None
+            else model_output_pixel_frames
+        )
+        if (
+            publication_pixel_frames is not None
+            and not bool(getattr(prepared, "repeat_first_frame", False))
+            and int(prepared.pixels.shape[0]) != target_pixel_frames
+        ):
             raise BackendContractError(
                 "camera publication GT length differs from the requested output length"
             )
-        c2w = getattr(prepared, "publication_c2w", None)
-        if (
-            c2w is None
-            or c2w.shape != (target_pixel_frames, 4, 4)
-            or c2w.dtype != np.float64
-            or not np.isfinite(c2w).all()
-        ):
-            raise BackendContractError(
-                "camera publication requires finite FP64 absolute C2W for every output frame"
+
+        camera_artifact: bytes | None = None
+        publication_provenance: dict[str, Any] = {}
+        if publication_pixel_frames is not None:
+            c2w = getattr(prepared, "publication_c2w", None)
+            if (
+                c2w is None
+                or c2w.shape != (target_pixel_frames, 4, 4)
+                or c2w.dtype != np.float64
+                or not np.isfinite(c2w).all()
+            ):
+                raise BackendContractError(
+                    "camera publication requires finite FP64 absolute C2W for every output frame"
+                )
+            buffer = io.BytesIO()
+            np.save(buffer, c2w, allow_pickle=False)
+            camera_artifact = buffer.getvalue()
+            publication_provenance = {
+                "camera_convention": "authoritative_absolute_c2w",
+                "model_output_pixel_frames": model_output_pixel_frames,
+                "published_pixel_frames": target_pixel_frames,
+                "trim_frames": max(model_output_pixel_frames - target_pixel_frames, 0),
+                "tail_pad_frames": max(target_pixel_frames - model_output_pixel_frames, 0),
+                "tail_padding": (
+                    "repeat_last_generated_frame"
+                    if target_pixel_frames > model_output_pixel_frames
+                    else "none"
+                ),
+            }
+
+        encoder = getattr(provider, "video_encoder", None)
+        if target_pixel_frames > _FILE_STREAMING_PIXEL_THRESHOLD:
+            if callable(encoder):
+                raise BackendContractError(
+                    "hour-scale Stage2 generation requires the released streaming encoder"
+                )
+            runtime_output = Path(str(provider.config["runtime"]["output_dir"])).expanduser()
+            streamed = _encode_stage2_streaming(
+                provider.vae,
+                output_latents,
+                prepared,
+                target_pixel_frames=target_pixel_frames,
+                fps=float(provider.config["data"].get("fps", 16.0)),
+                temporary_root=runtime_output.resolve().parent,
+                chunk_latent_frames=_FILE_STREAMING_VAE_LATENT_CHUNK,
             )
-        tail_pad_frames = target_pixel_frames - model_output_pixel_frames
-        if tail_pad_frames:
-            tail = decoded[:, -1:].expand(
-                -1,
-                tail_pad_frames,
-                -1,
-                -1,
-                -1,
+            artifacts: dict[str, Any] = {
+                "compare.mp4": streamed.compare,
+                "video.mp4": streamed.video,
+                "schedule.json": canonical_json(dict(schedule)),
+            }
+            shape = streamed.shape
+            finite_fraction = 1.0
+            vae_decode = {
+                "mode": "continuous_cached_file_tiles",
+                "chunk_latent_frames": _FILE_STREAMING_VAE_LATENT_CHUNK,
+            }
+        else:
+            if output_latent_frames > _STREAMING_VAE_LATENT_CHUNK:
+                decoded = provider.vae.decode_streaming(
+                    output_latents,
+                    chunk_latent_frames=_STREAMING_VAE_LATENT_CHUNK,
+                )
+                vae_decode = {
+                    "mode": "continuous_cached_tiles",
+                    "chunk_latent_frames": _STREAMING_VAE_LATENT_CHUNK,
+                }
+            else:
+                decoded = provider.vae.decode(output_latents, use_cache=False)
+                vae_decode = {
+                    "mode": "direct",
+                    "chunk_latent_frames": output_latent_frames,
+                }
+            if int(decoded.shape[1]) != model_output_pixel_frames:
+                raise BackendContractError(
+                    "Stage2 VAE frame count differs from latent-aligned output: "
+                    f"{int(decoded.shape[1])} != {model_output_pixel_frames}"
+                )
+            finite_fraction = float(torch.isfinite(decoded).float().mean().item())
+            if finite_fraction != 1.0:
+                raise BackendContractError("Stage2 VAE decode produced non-finite pixels")
+            trim_frames = max(int(decoded.shape[1]) - target_pixel_frames, 0)
+            tail_pad_frames = max(target_pixel_frames - int(decoded.shape[1]), 0)
+            if trim_frames:
+                decoded = decoded[:, :target_pixel_frames].contiguous()
+            elif tail_pad_frames:
+                tail = decoded[:, -1:].expand(
+                    -1,
+                    tail_pad_frames,
+                    -1,
+                    -1,
+                    -1,
+                )
+                decoded = torch.cat((decoded, tail), dim=1).contiguous()
+            video = (
+                encoder(decoded, fps=float(provider.config["data"].get("fps", 16.0)))
+                if callable(encoder)
+                else _encode_mp4(decoded, fps=float(provider.config["data"].get("fps", 16.0)))
             )
-            decoded = torch.cat((decoded, tail), dim=1).contiguous()
-        buffer = io.BytesIO()
-        np.save(buffer, c2w, allow_pickle=False)
-        camera_artifact = buffer.getvalue()
-        publication_provenance = {
-            "camera_convention": "authoritative_absolute_c2w",
-            "model_output_pixel_frames": model_output_pixel_frames,
-            "published_pixel_frames": target_pixel_frames,
-            "tail_pad_frames": tail_pad_frames,
-            "tail_padding": "repeat_last_generated_frame",
-        }
-    encoder = getattr(provider, "video_encoder", None)
-    video = (
-        encoder(decoded, fps=float(provider.config["data"].get("fps", 16.0)))
-        if callable(encoder)
-        else _encode_mp4(decoded, fps=float(provider.config["data"].get("fps", 16.0)))
-    )
-    compare = _encode_compare_mp4(
-        decoded,
-        prepared,
-        fps=float(provider.config["data"].get("fps", 16.0)),
-    )
-    artifacts = {
-        "compare.mp4": compare,
-        "video.mp4": video,
-        "schedule.json": canonical_json(dict(schedule)),
-    }
+            compare = _encode_compare_mp4(
+                decoded,
+                prepared,
+                fps=float(provider.config["data"].get("fps", 16.0)),
+            )
+            artifacts = {
+                "compare.mp4": compare,
+                "video.mp4": video,
+                "schedule.json": canonical_json(dict(schedule)),
+            }
+            shape = tuple(int(value) for value in decoded.shape)
+
     if camera_artifact is not None:
         artifacts["camera.npy"] = camera_artifact
     return GeneratedSample(
         artifacts=artifacts,
-        shape=tuple(int(value) for value in decoded.shape),
-        dtype=str(decoded.dtype).removeprefix("torch."),
+        shape=shape,
+        dtype="float32",
         metrics={"finite_fraction": finite_fraction},
         provenance={
             "generation_pass": asdict(generation_pass),
@@ -1154,7 +1209,7 @@ def _prefixed_state(state: Mapping[str, Any]) -> OrderedDict[str, Any]:
     return result
 
 
-def _local_rng_state(rank: int, device: Any) -> dict[str, Any]:
+def _local_rng_state(rank: int, device: Any, reader: Any) -> dict[str, Any]:
     import torch
 
     from solarwm.runtime.safe_state import (
@@ -1162,19 +1217,26 @@ def _local_rng_state(rank: int, device: Any) -> dict[str, Any]:
         encode_python_rng_state,
     )
 
+    state_dict = getattr(reader, "checkpoint_state_dict", None)
+    if not callable(state_dict):
+        state_dict = getattr(reader, "state_dict", None)
+    if not callable(state_dict):
+        raise BackendContractError("Stage2 checkpoint requires a stateful data reader")
     return {
+        "schema": "solarwm.wan22.stage2-rank-runtime.v1",
         "rank": int(rank),
+        "reader": state_dict(),
         "python": encode_python_rng_state(random.getstate()),
         "numpy": encode_numpy_rng_state(np.random.get_state()),
         "torch_cpu": torch.get_rng_state().cpu(),
         "torch_cuda": (
-            torch.cuda.get_rng_state(device).cpu() if torch.cuda.is_available() else None
+            torch.cuda.get_rng_state(device).cpu() if torch.device(device).type == "cuda" else None
         ),
     }
 
 
-def _gather_rng_state(rank: int, device: Any) -> list[dict[str, Any]]:
-    local = _local_rng_state(rank, device)
+def _gather_rng_state(rank: int, device: Any, reader: Any) -> list[dict[str, Any]]:
+    local = _local_rng_state(rank, device, reader)
     dist, _, world = _distributed_context()
     if world == 1:
         return [local]
@@ -1183,7 +1245,7 @@ def _gather_rng_state(rank: int, device: Any) -> list[dict[str, Any]]:
     return list(gathered)
 
 
-def _restore_rng_state(states: Any, *, rank: int, device: Any) -> None:
+def _restore_rng_state(states: Any, *, rank: int, device: Any, reader: Any) -> None:
     import torch
 
     from solarwm.runtime.safe_state import (
@@ -1203,11 +1265,33 @@ def _restore_rng_state(states: Any, *, rank: int, device: Any) -> None:
     )
     if selected is None:
         raise BackendContractError(f"Stage2 checkpoint has no RNG state for rank {rank}")
+    if selected.get("schema") != "solarwm.wan22.stage2-rank-runtime.v1":
+        raise BackendContractError("Stage2 checkpoint lacks exact rank-local runtime state")
+    load_state_dict = getattr(reader, "load_state_dict", None)
+    if not callable(load_state_dict):
+        raise BackendContractError("Stage2 resume requires a stateful data reader")
+    load_state_dict(selected.get("reader", {}))
     random.setstate(decode_python_rng_state(selected.get("python")))
     np.random.set_state(decode_numpy_rng_state(selected.get("numpy")))
-    torch.set_rng_state(selected["torch_cpu"])
-    if torch.cuda.is_available() and selected.get("torch_cuda") is not None:
-        torch.cuda.set_rng_state(selected["torch_cuda"], device)
+    cpu_state = selected.get("torch_cpu")
+    if (
+        not isinstance(cpu_state, torch.Tensor)
+        or cpu_state.dtype != torch.uint8
+        or cpu_state.ndim != 1
+        or cpu_state.numel() == 0
+    ):
+        raise BackendContractError("Stage2 checkpoint CPU RNG state is invalid")
+    torch.set_rng_state(cpu_state)
+    if torch.device(device).type == "cuda":
+        cuda_state = selected.get("torch_cuda")
+        if (
+            not isinstance(cuda_state, torch.Tensor)
+            or cuda_state.dtype != torch.uint8
+            or cuda_state.ndim != 1
+            or cuda_state.numel() == 0
+        ):
+            raise BackendContractError("Stage2 checkpoint CUDA RNG state is invalid")
+        torch.cuda.set_rng_state(cuda_state, device)
 
 
 def _load_optimizer_state(module: Any, optimizer: Any, state: Mapping[str, Any]) -> None:
@@ -1322,7 +1406,7 @@ def save_stage2_checkpoint(runtime: Any, step: int) -> str:
     if setup_error:
         raise BackendContractError(f"Stage2 checkpoint transaction setup failed: {setup_error}")
 
-    rng_state = _gather_rng_state(int(runtime.topology.raw_rank), runtime.device)
+    rng_state = _gather_rng_state(int(runtime.topology.raw_rank), runtime.device, runtime.data)
     student_state = _gather_full_state(runtime.student.module, rank0_only=True)
     student_optimizer = _gather_full_optimizer(runtime.student.module, runtime.student_optimizer)
     ema_state: Mapping[str, Any] | None = None
@@ -1500,11 +1584,17 @@ def load_stage2_checkpoint(runtime: Any, path: str | Path) -> RestoredStage2Chec
     except Exception as exc:
         progress_error = f"{type(exc).__name__}: {exc}"
     _collective_error(progress_error, phase="resume progress")
-    _restore_rng_state(
-        model_payload.get("rng_state_by_rank"),
-        rank=int(runtime.topology.raw_rank),
-        device=runtime.device,
-    )
+    runtime_state_error = None
+    try:
+        _restore_rng_state(
+            model_payload.get("rng_state_by_rank"),
+            rank=int(runtime.topology.raw_rank),
+            device=runtime.device,
+            reader=runtime.data,
+        )
+    except Exception as exc:
+        runtime_state_error = f"{type(exc).__name__}: {exc}"
+    _collective_error(runtime_state_error, phase="rank runtime restore")
     return RestoredStage2Checkpoint(
         step=step,
         student_step=student_step,
@@ -1529,7 +1619,7 @@ class Wan5BStage2Runtime:
         critic: WanDiffusion,
         codec: Wan5BOnlineCodec,
         text_encoder: Any,
-        batches: Iterator[Mapping[str, Any]],
+        batches: Any,
         student_optimizer: Any,
         critic_optimizer: Any,
         student_scheduler: Any,
@@ -1550,7 +1640,8 @@ class Wan5BStage2Runtime:
         self.critic = critic
         self.codec = codec
         self.text_encoder = text_encoder
-        self.batches = batches
+        self.data = batches
+        self.batches = iter(batches)
         self.student_optimizer = student_optimizer
         self.critic_optimizer = critic_optimizer
         self.student_scheduler = student_scheduler
@@ -2063,6 +2154,11 @@ class Wan5BStage2Runtime:
             "generation": report,
         }
 
+    def close(self) -> None:
+        close = getattr(self.data, "close", None)
+        if callable(close):
+            close()
+
 
 def _score_model_config(config: Mapping[str, Any]) -> dict[str, Any]:
     score = copy.deepcopy(dict(config))
@@ -2205,7 +2301,7 @@ def build_stage2_runtime(
         critic=critic,
         codec=codec,
         text_encoder=text_encoder,
-        batches=iter(loader),
+        batches=loader,
         student_optimizer=student_optimizer,
         critic_optimizer=critic_optimizer,
         student_scheduler=student_scheduler,
@@ -2237,6 +2333,7 @@ def run_stage2_training(config: Mapping[str, Any]) -> int:
         raise BackendContractError(
             f"{_TORCHRUN_OWNER_ENV} must be backend or caller, got {owner!r}"
         )
+    runtime = None
     try:
         runtime = build_stage2_runtime(config)
         runtime_config = config.get("runtime", {})
@@ -2293,6 +2390,10 @@ def run_stage2_training(config: Mapping[str, Any]) -> int:
             )
         return 0
     finally:
+        if runtime is not None:
+            close = getattr(runtime, "close", None)
+            if callable(close):
+                close()
         if owner == "backend":
             cleanup_torchrun()
 
@@ -2343,9 +2444,12 @@ class CudaWanStage2GenerationAdapter:
                 self.diffusion = build_diffusion_architecture(values)
                 self.text_encoder = WanTextEncoder(layout.text_encoder, layout.tokenizer)
                 self.vae = Wan5BVAE(layout.vae)
-                self.diffusion.module.eval().requires_grad_(False).to(self.device)
-                self.text_encoder.to(self.device)
-                self.vae.to(self.device)
+                inference_dtype = torch.bfloat16
+                self.diffusion.module.eval().requires_grad_(False).to(
+                    device=self.device, dtype=inference_dtype
+                )
+                self.text_encoder.to(self.device, dtype=inference_dtype)
+                self.vae.to(self.device, dtype=inference_dtype)
                 self._loaded_role: str | None = None
                 self._prepared: dict[int, Any] = {}
                 self._deferred_camera_inputs = None

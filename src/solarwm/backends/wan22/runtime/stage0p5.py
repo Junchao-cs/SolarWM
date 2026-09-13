@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -111,7 +111,7 @@ class Wan5BStage0p5Runtime:
         *,
         diffusion: Any,
         codec: Wan5BOnlineCodec | WanA14BOnlineCodec | None,
-        batches: Iterator[Mapping[str, Any]],
+        batches: Any,
         optimizer: Any,
         lr_scheduler: Any,
         ema: ShardedEMA,
@@ -123,7 +123,8 @@ class Wan5BStage0p5Runtime:
         self.config = config
         self.diffusion = diffusion
         self.codec = codec
-        self.batches = batches
+        self.data = batches
+        self.batches = iter(batches)
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.ema = ema
@@ -340,6 +341,8 @@ class Wan5BStage0p5Runtime:
             optimizer=self.optimizer,
             scheduler=self.lr_scheduler,
             ema=self.ema,
+            reader=self.data,
+            device=self.device,
         )
         self.checkpoint_id = f"digest:{identity}"
         return identity
@@ -374,6 +377,11 @@ class Wan5BStage0p5Runtime:
             "generation": generation,
         }
 
+    def close(self) -> None:
+        close = getattr(self.data, "close", None)
+        if callable(close):
+            close()
+
 
 def _bind_full_resume_initialization(runtime: Any, restored: Any) -> None:
     """Bind the runtime identity after full checkpoint restoration succeeds."""
@@ -383,7 +391,7 @@ def _bind_full_resume_initialization(runtime: Any, restored: Any) -> None:
         "source_step": restored.step,
         "source_path": str(restored.path),
         "standalone": restored.standalone,
-        "weights": ["live", "ema", "optimizer", "scheduler"],
+        "weights": ["live", "ema", "optimizer", "scheduler", "reader", "rng"],
     }
     runtime.initialization_id = restored.identity
     runtime.set_global_step(restored.step)
@@ -503,7 +511,7 @@ def build_stage0p5_runtime(config: Mapping[str, Any]) -> Wan5BStage0p5Runtime:
         config,
         diffusion=diffusion,
         codec=codec,
-        batches=iter(loader),
+        batches=loader,
         optimizer=optimizer,
         lr_scheduler=scheduler,
         ema=ema,
@@ -520,6 +528,8 @@ def build_stage0p5_runtime(config: Mapping[str, Any]) -> Wan5BStage0p5Runtime:
             optimizer=runtime.optimizer,
             scheduler=runtime.lr_scheduler,
             ema=runtime.ema,
+            reader=runtime.data,
+            device=runtime.device,
         )
         _bind_full_resume_initialization(runtime, restored)
     return runtime
@@ -533,6 +543,7 @@ def run_stage0p5_training(config: Mapping[str, Any]) -> int:
         raise BackendContractError(
             f"{_TORCHRUN_OWNER_ENV} must be backend or caller, got {owner!r}"
         )
+    runtime = None
     try:
         runtime = build_stage0p5_runtime(config)
         train = config["train"]
@@ -557,6 +568,10 @@ def run_stage0p5_training(config: Mapping[str, Any]) -> int:
         # Backend return values are process exit codes, not optimizer steps.
         return 0
     finally:
+        if runtime is not None:
+            close = getattr(runtime, "close", None)
+            if callable(close):
+                close()
         # Ordinary CLI calls are owned here. Wrappers needing post-training
         # collectives explicitly retain ownership until their final barrier.
         if owner == "backend":

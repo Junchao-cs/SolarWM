@@ -308,3 +308,14 @@ __all__ = [
     "validate_normalized_intrinsics",
     "wan_fixed_intrinsics_like",
 ]
+
+
+def fixed_intrinsics_like(reference: object) -> object:
+    """Build the released camera intrinsics on a tensor's device and dtype."""
+    output = reference.new_zeros(reference.shape)
+    output[..., 0, 0] = WAN_FIXED_FX
+    output[..., 1, 1] = WAN_FIXED_FY
+    output[..., 0, 2] = WAN_FIXED_CX
+    output[..., 1, 2] = WAN_FIXED_CY
+    output[..., 2, 2] = 1.0
+    return output

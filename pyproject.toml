@@ -79,6 +79,7 @@ flash-attn = [{ requirement = "torch", match-runtime = true }]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers --import-mode=importlib"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100

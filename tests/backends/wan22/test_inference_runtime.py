@@ -280,6 +280,56 @@ def test_recipe_row_without_start_derives_a_repeatable_window() -> None:
     assert plan.start_frame == expected
 
 
+def test_recipe_row_can_pin_historical_validation_noise_seed() -> None:
+    row = IndexRow.from_mapping(
+        0,
+        {
+            "sample_id": "sample-historical-seed",
+            "key": "video-historical-seed",
+            "shard": "part-000.tar",
+            "fps": 16.0,
+            "num_frames": 160,
+            "validation_noise_seed": 546,
+        },
+    )
+
+    _, noise_seed, _ = _plan_case(
+        row,
+        slot=14,
+        pixel_frames=153,
+        output_fps=16.0,
+        base_noise_seed=42,
+        variable_rollout_by_source=True,
+    )
+
+    assert noise_seed == 546
+
+
+@pytest.mark.parametrize("invalid", [-1, 2**63, 1.5, True, "546"])
+def test_recipe_row_rejects_invalid_validation_noise_seed(invalid: object) -> None:
+    row = IndexRow.from_mapping(
+        0,
+        {
+            "sample_id": "sample-invalid-seed",
+            "key": "video-invalid-seed",
+            "shard": "part-000.tar",
+            "fps": 16.0,
+            "num_frames": 160,
+            "validation_noise_seed": invalid,
+        },
+    )
+
+    with pytest.raises(DataContractError, match="invalid validation_noise_seed"):
+        _plan_case(
+            row,
+            slot=0,
+            pixel_frames=153,
+            output_fps=16.0,
+            base_noise_seed=42,
+            variable_rollout_by_source=True,
+        )
+
+
 def test_camera_length_recipe_starts_at_the_first_camera_frame() -> None:
     row = IndexRow.from_mapping(
         0,
@@ -512,6 +562,181 @@ def test_camera_length_defers_video_decode_and_releases_each_case(
     assert second_deferred.shards is None
     assert len(closes) == 4
     assert distributed_closes == [1, 1]
+
+
+def test_camera_length_static_condition_decodes_only_the_first_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config("configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
+    config["inference"]["output_layout"] = "transaction_v1"
+    config["validation"]["sample_count"] = 1
+    row = IndexRow.from_mapping(
+        0,
+        {
+            "sample_id": "sample-static",
+            "key": "static",
+            "shard": "raw/shard.tar",
+            "clip_id": "static",
+            "dataset": "demo-hour",
+            "fps": 16.0,
+            "num_frames": 160,
+            "start_frame": 0,
+            "video_member": "static.mp4",
+            "camera_member": "static.camera.npz",
+            "manifest": {
+                "metadata": {},
+                "prompt": {"text": "move forward"},
+                "video": {"frame_content": "static_first_frame"},
+            },
+        },
+    )
+    decoded_indices: list[tuple[int, ...]] = []
+
+    class FakeShards:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> FakeShards:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.close()
+
+        def close(self) -> None:
+            return None
+
+        def read(self, _row: IndexRow, name: str) -> bytes:
+            return name.encode()
+
+    def fake_decode(
+        _payload: bytes, frame_indices: tuple[int, ...], **_kwargs: object
+    ) -> np.ndarray:
+        decoded_indices.append(tuple(frame_indices))
+        return np.zeros((len(frame_indices), 3, 2, 2), dtype=np.float32)
+
+    monkeypatch.setattr(wan_inference, "read_index", lambda _path: (row,))
+    monkeypatch.setattr(wan_inference, "resolver_from_config", lambda *_a, **_k: object())
+    monkeypatch.setattr(wan_inference, "TarShardReader", FakeShards)
+    monkeypatch.setattr(wan_inference, "decode_video", fake_decode)
+    monkeypatch.setattr(
+        wan_inference,
+        "build_camera_tokens",
+        lambda *_a, **_k: {
+            "viewmats": np.zeros((1, 4, 4), dtype=np.float32),
+            "K": np.zeros((1, 3, 3), dtype=np.float32),
+        },
+    )
+
+    adapter = object.__new__(wan_inference.CudaWanGenerationAdapter)
+    adapter.config = config
+    adapter.topology = SimpleNamespace(dp_world_size=1, dp_rank=0)
+    adapter._prepared = {}
+    adapter._deferred_camera_inputs = None
+    cases = adapter.build_cases(resolve_generation_plan(config))
+    adapter._materialize_deferred_camera_case(cases[0])
+
+    assert decoded_indices == [(0,)]
+    assert adapter._prepared[0].repeat_first_frame is True
+    assert adapter._prepared[0].pixels.shape[0] == 1
+
+
+@pytest.mark.parametrize(
+    ("target_pixel_frames", "expected_chunk_sizes"),
+    ((8, (5, 3)), (12, (5, 4, 3))),
+)
+def test_stage2_streaming_encoder_bounds_tiles_and_adjusts_the_tail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    target_pixel_frames: int,
+    expected_chunk_sizes: tuple[int, ...],
+) -> None:
+    torch = pytest.importorskip("torch")
+    writers: list[object] = []
+
+    class FakeWriter:
+        def __init__(self, path: Path, *, fps: float, height: int, width: int) -> None:
+            self.path = path
+            self.fps = fps
+            self.height = height
+            self.width = width
+            self.frames: list[np.ndarray] = []
+            writers.append(self)
+
+        def write(self, frames: np.ndarray) -> None:
+            self.frames.append(frames.copy())
+
+        def finish(self) -> None:
+            self.path.write_bytes(b"encoded")
+
+        def abort(self) -> None:
+            return None
+
+    class FakeVAE:
+        @staticmethod
+        def decode_streaming_chunks(_latents: object, *, chunk_latent_frames: int) -> object:
+            assert chunk_latent_frames == 2
+            yield torch.zeros((1, 5, 3, 2, 2), dtype=torch.float32)
+            yield torch.ones((1, 4, 3, 2, 2), dtype=torch.float32)
+
+    monkeypatch.setattr(wan_inference, "_RawVideoFileWriter", FakeWriter)
+    prepared = wan_inference._PreparedCase(
+        pixels=torch.full((1, 3, 2, 2), -1.0, dtype=torch.float32),
+        camera={},
+        source_pixel_frames=12,
+        repeat_first_frame=True,
+    )
+    result = wan_inference._encode_stage2_streaming(
+        FakeVAE(),
+        torch.zeros((1, 3, 1, 1, 1)),
+        prepared,
+        target_pixel_frames=target_pixel_frames,
+        fps=16.0,
+        temporary_root=tmp_path,
+        chunk_latent_frames=2,
+    )
+
+    assert len(writers) == 2
+    generated_writer, compare_writer = writers
+    assert tuple(len(chunk) for chunk in generated_writer.frames) == expected_chunk_sizes
+    assert tuple(len(chunk) for chunk in compare_writer.frames) == expected_chunk_sizes
+    assert generated_writer.width == 2
+    assert compare_writer.width == 4
+    np.testing.assert_array_equal(compare_writer.frames[0][..., :2, :], 0)
+    assert result.shape == (1, target_pixel_frames, 3, 2, 2)
+    result.video.path.unlink()
+    result.compare.path.unlink()
+
+
+def test_compare_encoder_repeats_static_first_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    torch = pytest.importorskip("torch")
+    captured: dict[str, object] = {}
+
+    def fake_encode(reference: object, generated: object, **kwargs: object) -> bytes:
+        captured.update(reference=reference, generated=generated, kwargs=kwargs)
+        return b"encoded"
+
+    monkeypatch.setattr(wan_inference, "encode_compare_mp4", fake_encode)
+    prepared = wan_inference._PreparedCase(
+        pixels=torch.full((1, 3, 2, 2), -0.5),
+        camera={},
+        source_pixel_frames=12,
+        repeat_first_frame=True,
+    )
+    generated = torch.zeros((1, 12, 3, 2, 2))
+
+    assert wan_inference._encode_compare_mp4(generated, prepared, fps=16.0) == b"encoded"
+    reference = captured["reference"]
+    assert isinstance(reference, torch.Tensor)
+    assert reference.shape == generated.shape
+    torch.testing.assert_close(reference, torch.full_like(generated, -0.5))
+    assert captured["generated"] is generated
+    assert captured["kwargs"] == {
+        "fps": 16.0,
+        "layout": "btchw",
+        "value_range": "minus_one_one",
+    }
 
 
 def test_fixed_validation_skips_and_refills_from_the_full_seeded_order(
@@ -1121,13 +1346,13 @@ def test_source_variable_rollout_matches_mapping(num_frames: int, expected: int)
     (
         (81, 16.0, 21),
         (153, 16.0, 39),
-        (160, 16.0, 39),
+        (160, 16.0, 42),
         (237, 16.0, 60),
-        (960, 16.0, 240),
-        (960, 30.0, 126),
+        (960, 16.0, 243),
+        (960, 30.0, 129),
     ),
 )
-def test_camera_length_rollout_uses_longest_complete_chunk(
+def test_camera_length_rollout_uses_smallest_complete_covering_chunk(
     num_frames: int,
     source_fps: float,
     expected: int,
@@ -1143,14 +1368,43 @@ def test_camera_length_rollout_uses_longest_complete_chunk(
     )
 
 
-def test_camera_length_rollout_rejects_source_shorter_than_one_chunk() -> None:
-    with pytest.raises(DataContractError, match="cannot support one 3-latent chunk"):
+def test_camera_length_rollout_holds_the_tail_for_a_short_source() -> None:
+    assert (
         _camera_length_rollout_latents(
             num_frames=8,
             source_fps=16.0,
             output_fps=16.0,
             num_frame_per_block=3,
         )
+        == 3
+    )
+
+
+def test_camera_length_plan_holds_only_the_chunk_alignment_tail() -> None:
+    row = IndexRow.from_mapping(
+        0,
+        {
+            "sample_id": "sample-tail-hold",
+            "key": "video-tail-hold",
+            "shard": "part-000.tar",
+            "fps": 16.0,
+            "num_frames": 160,
+        },
+    )
+
+    plan, _, _ = _plan_case(
+        row,
+        slot=0,
+        pixel_frames=165,
+        output_fps=16.0,
+        base_noise_seed=42,
+        variable_rollout_by_source=True,
+        start_at_first_frame=True,
+        hold_last_source_frame=True,
+    )
+
+    assert plan.source_frame_indices[:160] == tuple(range(160))
+    assert plan.source_frame_indices[160:] == (159,) * 5
 
 
 def test_source_variable_pass_keeps_collective_max_and_records_trim() -> None:

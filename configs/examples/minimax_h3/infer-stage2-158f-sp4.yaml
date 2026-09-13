@@ -1,0 +1,117 @@
+schema: solarwm.run.v1
+action: infer
+name: minimax-h3-infer-stage2-158f-sp4
+model:
+  family: minimax_h3
+  architecture: minimax-h3-33b
+  checkpoint_path: /path/to/models/MiniMax-H3
+  transformer_subfolder: transformer
+  transformer_device_map: null
+  training_mode: lora
+  torch_dtype: bfloat16
+  load_conditioners: false
+  camera_attention_mode: fused_prope
+  attention_head_dim: 128
+  camera_prope_head_dim_start: 96
+  camera_prope_head_dim_end: 128
+  camera_translation_transform: logd4
+  camera_intrinsics_mode: wan_fixed
+  latent_channels: 24
+  latent_height: 48
+  latent_width: 84
+  rows_per_latent: 1008
+  num_frames_per_block: 5
+  max_prior_clean_chunks: 5
+  attention_backend: flex
+  adapter:
+    type: lora
+    target: block_qkvo_ffn
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+    bias: none
+    dtype: bfloat16
+    expected_target_linear_modules: 312
+    expected_trainable_parameters: 2075394048
+  student_rope_mode: sliding_local
+  score_rope_mode: native_absolute
+data:
+  input_mode: preencoded
+  format: webdataset
+  dataset_name: h3_preencoded_wds
+  transport:
+    kind: local
+    root: /path/to/SolarWM-Data/releases-v1
+  index_root: /path/to/SolarWM-Data/releases-v1
+  train_index: recipes/clean-158f-h3/latent-wds/minimax-h3-158f-768p-nomind-v1/train-index.jsonl.gz
+  test_index: recipes/clean-158f-h3/latent-wds/minimax-h3-158f-768p-nomind-v1/test-index.jsonl.gz
+  silence_latents_path: /path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/h3_silence_153_158_170.safetensors
+  encoder_contract_path: /path/to/SolarWM-Data/releases-v1/latent-wds/minimax-h3-158f-768p-nomind-v1/support/encoder_contract.json
+  preencode_version: h3.158f.v1
+  pixel_frames: 158
+  encoded_latents: 47
+  train_target_latents: 47
+  height: 768
+  width: 1344
+  latent_channels: 24
+  latent_height: 48
+  latent_width: 84
+  frame_sampling: contiguous
+  source_fps_policy: audit_only
+  random_start: false
+  resolution_label: default
+  max_relative_translation: 20.0
+  max_camera_absolute_value: 20.0
+  seed: 42
+  num_workers: 4
+  prefetch_factor: 2
+  gcs_prefetch_shards: 32
+distributed:
+  world_size: 8
+  sequence_parallel_size: 4
+  context_parallel_size: 1
+  rank_partition: node_shard
+  sp_peers_share_sample: true
+  sp_peers_share_rng: true
+train:
+  stage: stage2
+  causal_mode: self_gradient_forcing
+  objective: flow_matching
+  video_timestep_shift: 12.0
+  audio_timestep_shift: 3.0
+  keyframe_noise_augmentation: 0.999
+  audio_loss_weight: 0.0
+  critic_updates_per_student: 5
+  num_denoising_steps: 4
+  per_rank_exit_step: true
+  last_step_only: false
+  match_context: true
+  cache_mode: exit
+  tail_camera_policy: repeat_last_latent
+  audio_condition_policy: fixed_noised_silence_per_rollout
+  score_min_sigma: 0.02
+  score_max_sigma: 0.98
+validation:
+  sample_count: 64
+  selection_seed: 42
+  noise_seed: 42
+  pixel_frames: 158
+  latent_frames: 47
+  fps: 24
+  num_inference_steps: 4
+  max_relative_translation: 20.0
+  max_camera_absolute_value: 20.0
+  validate_every_steps: 100
+  smoke_step: 20
+  passes:
+  - live
+  - ema
+  rollout_latents: 50
+  decode_latents: 47
+  camera_frames: 158
+  balance_by_dataset: true
+checkpoint:
+  resume_from: /path/to/SolarWM-models/SolarWM-h3-33B-sgf-stage2-158f
+  weight_source: ema
+runtime:
+  output_dir: outputs/minimax-h3-infer-stage2-158f-sp4
