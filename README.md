@@ -39,7 +39,7 @@ interactive video world models, from data preparation to scalable training
 and long-horizon inference.
 
 - **Four models. One codebase.** A unified framework supports **four
-  5B–33B models** across **Wan2.2, LTX-2.5, and MiniMax-H3**, with shared
+  5B–33B models** across Wan2.2, LTX-2.5, and MiniMax-H3, with shared
   data, training, and inference interfaces while preserving each backbone's
   native representation and objective.
 - **A simple three-stage training recipe.** Bidirectional adaptation,
@@ -47,7 +47,7 @@ and long-horizon inference.
   distillation form a shared route across heterogeneous video backbones,
   without specialized ODE or consistency-distillation initialization.
   The resulting causal models support *few-step interaction over
-  arbitrarily long horizons** through **sliding-window inference**.
+  arbitrarily long horizons** through sliding-window inference.
 - **1.43M clips · 25 TB. Fully open.** We release the **complete dataset
   and data-processing pipeline**, unifying 14 datasets into a frame-aligned
   format with metric camera geometry, captions, quality metadata, and
