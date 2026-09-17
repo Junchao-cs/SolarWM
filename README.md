@@ -34,32 +34,30 @@ Mike Zheng Shou<sup>3</sup> &nbsp; Li Jiang<sup>1,2</sup>
 
 </div>
 
-We present **SolarWM**, a fully open foundation for building interactive video
-world models from data preparation through scalable training and long-horizon
-inference.
+We present **SolarWM**, a fully open, end-to-end framework for building
+interactive video world models, from data preparation to scalable training
+and long-horizon inference.
 
-- **Open, reconfigurable data infrastructure.** SolarWM converts 1.43 million
-  canonical clips from 14 datasets into a unified, frame-aligned contract for
-  observations, metric camera geometry, captions, quality metadata, selection,
-  and provenance. Source processing is decoupled from training-mixture design.
-- **A scalable, backbone-native model family.** One framework supports four
-  5B–33B models across Wan2.2, LTX-2.5, and MiniMax-H3 while preserving each
-  backbone's native representation and objective.
+- **Four models. One codebase.** A unified framework supports **four
+  5B–33B models** across **Wan2.2, LTX-2.5, and MiniMax-H3**, with shared
+  data, training, and inference interfaces while preserving each backbone's
+  native representation and objective.
 - **A simple three-stage training recipe.** Bidirectional adaptation,
   teacher-forced autoregressive initialization, and distribution matching
   distillation form a shared route across heterogeneous video backbones,
   without specialized ODE or consistency-distillation initialization.
-- **Long-horizon interaction from short training clips.** After training only
-  on 5-second sequences, the resulting causal models support real-time
-  interaction with rollouts spanning minutes to hours, without long-sequence
-  fine-tuning or attention-sink mechanisms.
+  The resulting causal models support **few-step interaction over
+  arbitrarily long horizons** through **sliding-window inference**.
+- **1.43M clips · 25 TB. Fully open.** We release the **complete dataset
+  and data-processing pipeline**, unifying 14 datasets into a frame-aligned
+  format with metric camera geometry, captions, quality metadata, and
+  provenance. Source processing is decoupled from training-mixture design,
+  allowing flexible data selection and mixing without reprocessing the
+  source datasets.
 
 ## News
 
-- **September 13, 2026** — We release SolarWM-H3 training and inference code,
-  [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and
-  [preencoded training data](docs/latent-wds.md) for Stage0.5, Stage1, and Stage2.
-  See the [H3 guide](docs/backends/minimax-h3.md) for checkpoint setup.
+- **September 13, 2026:** We release **SolarWM-H3**, the **first MiniMax-H3-based world model for streaming, few-step interaction**. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for **all three stages: Stage0.5, Stage1, and Stage2**. Get started with the [H3 guide](docs/backends/minimax-h3.md).
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
   stages, and bidirectional weights for SolarWM-14B, SolarWM-LTX, and SolarWM-H3.
