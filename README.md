@@ -46,7 +46,7 @@ and long-horizon inference.
   teacher-forced autoregressive initialization, and distribution matching
   distillation form a shared route across heterogeneous video backbones,
   without specialized ODE or consistency-distillation initialization.
-  The resulting causal models support **few-step interaction over
+  The resulting causal models support *few-step interaction over
   arbitrarily long horizons** through **sliding-window inference**.
 - **1.43M clips · 25 TB. Fully open.** We release the **complete dataset
   and data-processing pipeline**, unifying 14 datasets into a frame-aligned
@@ -57,7 +57,7 @@ and long-horizon inference.
 
 ## News
 
-- **September 13, 2026:** We release **SolarWM-H3**, the **first MiniMax-H3-based world model for streaming, few-step interaction**. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for **all three stages: Stage0.5, Stage1, and Stage2**. Get started with the [H3 guide](docs/backends/minimax-h3.md).
+- **September 13, 2026:** We release **SolarWM-H3**, the first MiniMax-H3-based world model for streaming, few-step interaction. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for all three stages: Stage0.5, Stage1, and Stage2. Get started with the [H3 guide](docs/backends/minimax-h3.md).
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
   stages, and bidirectional weights for SolarWM-14B, SolarWM-LTX, and SolarWM-H3.
