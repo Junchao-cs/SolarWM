@@ -21,7 +21,7 @@ train = [
   "torch>=2.5",
   "safetensors>=0.4",
   "einops>=0.8",
-  "decord>=0.6",
+  "decord2",  # decord has no aarch64 wheel; decord2 does (unverified whether `import decord` still works -- see setup_env_h3.sh)
 ]
 wan = [
   # Matches the release-tested Wan runtime and its UniPC scheduler behavior.
@@ -35,7 +35,7 @@ wan = [
 ]
 h3 = [
   "flash-attn==2.8.3",
-  "imageio==2.37.4",
+  "imageio[pyav]==2.37.4",  # [pyav] needed by examples/overlay_keys.py's iio.imread(..., plugin="pyav")
   "imageio-ffmpeg==0.6.0",
 ]
 ltx = [
@@ -45,7 +45,7 @@ ltx = [
 ]
 dev = [
   "build>=1.2",
-  "decord>=0.6",
+  "decord2",  # decord has no aarch64 wheel; decord2 does (unverified whether `import decord` still works -- see setup_env_h3.sh)
   "diffusers==0.38.0",
   "einops>=0.8",
   "ftfy>=6.2",
