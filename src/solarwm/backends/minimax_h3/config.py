@@ -354,7 +354,17 @@ def _validate_training(
 def _validate_validation(
     validation: Mapping[str, Any], *, action: str, stage: str = "stage0p5"
 ) -> None:
-    del action
+    generate_audio = validation.get("generate_audio", False)
+    if not isinstance(generate_audio, bool):
+        raise ConfigurationError("validation.generate_audio must be boolean")
+    if generate_audio and action not in {"infer", "train"}:
+        raise ConfigurationError(
+            "validation.generate_audio requires H3 inference or training validation"
+        )
+    if generate_audio and stage != "stage0p5":
+        raise ConfigurationError(
+            "validation.generate_audio is currently supported only for H3 Stage0.5"
+        )
     _positive_int(validation, "sample_count", "validation")
     for name in ("selection_seed", "noise_seed"):
         value = _required(validation, name, "validation")
@@ -441,6 +451,10 @@ def validate_h3_config(config: Mapping[str, Any]) -> H3RunContract:
                 "Source-length inference requires explicit live or ema weights"
             )
         _positive_int(inference, "expected_step", "inference")
+        if bool(config.get("validation", {}).get("generate_audio", False)):
+            raise ConfigurationError(
+                "validation.generate_audio is currently supported only for fixed Stage0.5 inference"
+            )
     model = _mapping(config, "model")
     data = _mapping(config, "data")
     metadata = config.get("metadata", {})

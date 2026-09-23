@@ -34,6 +34,13 @@ class H3TorchLayout:
         return self.source.target_video_output_slice
 
 
+@dataclass(frozen=True)
+class H3Stage0p5Losses:
+    total: Any
+    video: Any
+    audio: Any | None
+
+
 class H3Stage0p5Core:
     """One model/silence/device implementation shared by train and inference."""
 
@@ -139,9 +146,9 @@ class H3Stage0p5Core:
         viewmats: Any,
         K: Any,
         frame_ids: Any,
-    ) -> Any:
+    ) -> tuple[Any, Any]:
         times, inverse = self._row_times(layout, video_t, audio_t, self.device)
-        video, _audio = self.model(
+        video, audio = self.model(
             hidden_states=video_rows,
             audio_hidden_states=audio_rows,
             encoder_hidden_states=prompt,
@@ -161,9 +168,15 @@ class H3Stage0p5Core:
             stage0p5_sequence_parallel=is_sequence_parallel_enabled(),
             return_dict=False,
         )
-        return video[:, layout.target_video_output_slice]
+        return video[:, layout.target_video_output_slice], audio
 
-    def forward_loss(self, batch: H3ArtifactBatch, *, noise_seed: int | None) -> Any:
+    def forward_losses(
+        self,
+        batch: H3ArtifactBatch,
+        *,
+        noise_seed: int | None,
+        audio_loss_weight: float,
+    ) -> H3Stage0p5Losses:
         import torch
         import torch.nn.functional as F
 
@@ -185,11 +198,23 @@ class H3Stage0p5Core:
         self._broadcast_logical_sample(tags)
         layout = self.layout(tags)
         viewmats, K, frame_ids = self._camera(batch, layout)
-        self._broadcast_logical_sample(clean, anchor, prompt, viewmats, K)
+        if audio_loss_weight < 0:
+            raise ValueError("H3 audio_loss_weight must be non-negative")
+        audio_target_latents = getattr(batch, "audio_latents", None)
+        if audio_loss_weight > 0 and audio_target_latents is None:
+            raise RuntimeError("H3 audio loss requires per-sample AudioVAE target latents")
+        audio_clean = (
+            self.audio_rows()
+            if audio_target_latents is None
+            else audio_target_latents.to(self.device, dtype=torch.float32, non_blocking=True)
+            .permute(0, 2, 1)
+            .reshape(1, -1, 32)
+            .contiguous()
+        )
+        self._broadcast_logical_sample(clean, anchor, prompt, viewmats, K, audio_clean)
         anchor_noise = torch.randn(
             anchor.shape, generator=generator, device=self.device, dtype=torch.float32
         )
-        audio_clean = self.audio_rows()
         audio_noise = torch.randn(
             audio_clean.shape, generator=generator, device=self.device, dtype=torch.float32
         )
@@ -207,7 +232,7 @@ class H3Stage0p5Core:
         video_noisy = video_t * clean + (1.0 - video_t) * video_noise
         video_rows = torch.cat((patchify_video(anchor_noisy), patchify_video(video_noisy)), dim=1)
         target_rows = patchify_video(clean - video_noise)
-        prediction = self._forward(
+        prediction, audio_prediction = self._forward(
             video_rows=video_rows,
             audio_rows=audio_noisy,
             prompt=prompt,
@@ -222,9 +247,65 @@ class H3Stage0p5Core:
             raise RuntimeError(
                 f"H3 predicted rows {tuple(prediction.shape)} != {tuple(target_rows.shape)}"
             )
-        return F.mse_loss(prediction.float(), target_rows.float())
+        video_loss = F.mse_loss(prediction.float(), target_rows.float())
+        if audio_loss_weight == 0:
+            return H3Stage0p5Losses(total=video_loss, video=video_loss, audio=None)
+        audio_target = audio_clean - audio_noise
+        if tuple(audio_prediction.shape) != tuple(audio_target.shape):
+            raise RuntimeError(
+                f"H3 predicted audio rows {tuple(audio_prediction.shape)} != "
+                f"target {tuple(audio_target.shape)}"
+            )
+        audio_loss = F.mse_loss(audio_prediction.float(), audio_target.float())
+        return H3Stage0p5Losses(
+            total=video_loss + float(audio_loss_weight) * audio_loss,
+            video=video_loss,
+            audio=audio_loss,
+        )
+
+    def forward_loss(self, batch: H3ArtifactBatch, *, noise_seed: int | None) -> Any:
+        """Backward-compatible video-only loss for the released recipe."""
+
+        return self.forward_losses(
+            batch,
+            noise_seed=noise_seed,
+            audio_loss_weight=0.0,
+        ).total
 
     def generate(self, batch: H3ArtifactBatch, *, noise_seed: int, num_inference_steps: int) -> Any:
+        """Generate video while retaining the historical encoded-silence audio condition."""
+
+        video, _audio = self._generate(
+            batch,
+            noise_seed=noise_seed,
+            num_inference_steps=num_inference_steps,
+            generate_audio=False,
+        )
+        return video
+
+    def generate_joint(
+        self, batch: H3ArtifactBatch, *, noise_seed: int, num_inference_steps: int
+    ) -> tuple[Any, Any]:
+        """Jointly sample video and stereo audio latents with their native schedules."""
+
+        video, audio = self._generate(
+            batch,
+            noise_seed=noise_seed,
+            num_inference_steps=num_inference_steps,
+            generate_audio=True,
+        )
+        if audio is None:  # pragma: no cover - guarded by the private implementation
+            raise RuntimeError("H3 joint generation returned no audio latents")
+        return video, audio
+
+    def _generate(
+        self,
+        batch: H3ArtifactBatch,
+        *,
+        noise_seed: int,
+        num_inference_steps: int,
+        generate_audio: bool,
+    ) -> tuple[Any, Any | None]:
         import torch
 
         generator = torch.Generator(device=self.device).manual_seed(int(noise_seed))
@@ -246,6 +327,7 @@ class H3Stage0p5Core:
         audio_noise = torch.randn(
             audio_clean.shape, generator=generator, device=self.device, dtype=torch.float32
         )
+        current_audio = audio_noise
         current = torch.randn(
             (1, 24, 47, 48, 84),
             generator=generator,
@@ -268,8 +350,12 @@ class H3Stage0p5Core:
             ):
                 video_t = torch.tensor(float(video_time), device=self.device)
                 audio_t = torch.tensor(float(audio_time), device=self.device)
-                audio_rows = audio_t * audio_clean + (1.0 - audio_t) * audio_noise
-                prediction_rows = self._forward(
+                audio_rows = (
+                    current_audio
+                    if generate_audio
+                    else audio_t * audio_clean + (1.0 - audio_t) * audio_noise
+                )
+                prediction_rows, audio_prediction_rows = self._forward(
                     video_rows=torch.cat((anchor_rows, patchify_video(current)), dim=1),
                     audio_rows=audio_rows,
                     prompt=prompt,
@@ -295,9 +381,36 @@ class H3Stage0p5Core:
                 denoised = current + sigma * velocity
                 ratio = sigma_next / sigma
                 current = ratio * current + (1.0 - ratio) * denoised
+                if generate_audio:
+                    if tuple(audio_prediction_rows.shape) != tuple(current_audio.shape):
+                        raise RuntimeError(
+                            f"H3 audio inference velocity {tuple(audio_prediction_rows.shape)} != "
+                            f"sample {tuple(current_audio.shape)}"
+                        )
+                    audio_velocity = audio_prediction_rows.float()
+                    if not bool(torch.isfinite(audio_velocity).all().item()):
+                        raise FloatingPointError(
+                            "H3 Stage0.5 inference predicted non-finite audio velocity"
+                        )
+                    audio_sigma = float(audio_schedule.sigmas[index])
+                    audio_sigma_next = float(audio_schedule.sigmas[index + 1])
+                    if audio_sigma == 0:
+                        raise RuntimeError("H3 audio Euler schedule reached sigma zero early")
+                    audio_denoised = current_audio + audio_sigma * audio_velocity
+                    audio_ratio = audio_sigma_next / audio_sigma
+                    current_audio = (
+                        audio_ratio * current_audio + (1.0 - audio_ratio) * audio_denoised
+                    )
         if not bool(torch.isfinite(current).all().item()):
             raise FloatingPointError("H3 inference generated non-finite latents")
-        return current.contiguous()
+        if not generate_audio:
+            return current.contiguous(), None
+        if not bool(torch.isfinite(current_audio).all().item()):
+            raise FloatingPointError("H3 inference generated non-finite audio latents")
+        audio_latents = (
+            current_audio.reshape(1, 2, 263, 32).permute(0, 1, 3, 2).squeeze(0).contiguous()
+        )
+        return current.contiguous(), audio_latents
 
 
-__all__ = ["H3Stage0p5Core", "H3TorchLayout"]
+__all__ = ["H3Stage0p5Core", "H3Stage0p5Losses", "H3TorchLayout"]
