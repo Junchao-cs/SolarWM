@@ -35,6 +35,19 @@ def test_example_resolves_to_exact_stable_contract() -> None:
     assert resolved.values["data"]["gcs_prefetch_shards"] == 32
 
 
+@pytest.mark.parametrize(
+    "example",
+    (
+        "stage0p5-158f-lora384-sp2.yaml",
+        "stage1-158f-lora384-w6-sp2.yaml",
+        "stage2-158f-lora384-w6-sp4.yaml",
+    ),
+)
+def test_h3_training_examples_set_shuffle_buffer(example: str) -> None:
+    config = load_config(EXAMPLE.parent / example)
+    assert config.values["data"]["shuffle_buffer"] == 32768
+
+
 def test_h3_rejects_an_invalid_shard_prefetch_depth() -> None:
     config = _config()
     config["data"]["gcs_prefetch_shards"] = -1

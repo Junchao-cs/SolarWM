@@ -61,7 +61,12 @@ from solarwm.training import (
     TrainingEngine,
 )
 
-from .artifacts import H3PreencodedStream, h3_silence_profile, load_silence_latents
+from .artifacts import (
+    DEFAULT_H3_SHUFFLE_BUFFER,
+    H3PreencodedStream,
+    h3_silence_profile,
+    load_silence_latents,
+)
 from .distributed import get_sp_group, get_sp_rank, get_sp_size, sync_lora_gradients
 from .inference import camera_fingerprint, package_generated
 from .optional import load_conditioners, load_transformer, require_h3_runtime
@@ -155,7 +160,7 @@ def _reader(
         "cache_dir": transport.get("cache_dir"),
         "cache_max_gib": float(transport.get("cache_max_gib", 256)),
         "gcs_prefetch_shards": (0 if fixed_validation else data.get("gcs_prefetch_shards", 0)),
-        "shuffle_buffer": int(data.get("shuffle_buffer", 4096)),
+        "shuffle_buffer": int(data.get("shuffle_buffer", DEFAULT_H3_SHUFFLE_BUFFER)),
         "num_workers": 1 if fixed_validation else int(data.get("num_workers", 1)),
     }
     if fixed_validation:

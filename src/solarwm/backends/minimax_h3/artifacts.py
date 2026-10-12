@@ -31,6 +31,11 @@ from .camera import validate_absolute_c2w, validate_normalized_intrinsics
 from .codec import H3_PREENCODE_VERSION
 from .geometry import STABLE_STAGE0P5_GEOMETRY, latent_aligned_pixel_indices
 
+# The node-shard buffer counts adjacent index groups, not unique shards.
+# Cover each node's epoch groups to mix source-ordered indexes fully;
+# larger indexes or fewer nodes may need a higher explicit value.
+DEFAULT_H3_SHUFFLE_BUFFER = 32768
+
 
 class H3CameraFilterError(DataContractError):
     """A valid H3 sample rejected by the camera magnitude filter."""
@@ -474,7 +479,7 @@ class H3PreencodedStream:
         cache_dir: str | None = None,
         cache_max_gib: float = 256.0,
         gcs_prefetch_shards: int = 0,
-        shuffle_buffer: int = 4096,
+        shuffle_buffer: int = DEFAULT_H3_SHUFFLE_BUFFER,
         num_workers: int = 1,
         fixed_validation: bool = False,
         fixed_validation_sample_count: int | None = None,

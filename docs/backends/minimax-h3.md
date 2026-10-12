@@ -72,6 +72,8 @@ or Stage1 training, or `--set train.global_batch_size=4` with the same world-siz
 override for Stage2. These smaller runs change the global batch size; the
 unmodified configs retain the released recipes.
 
+H3 training uses `data.shuffle_buffer: 32768` to mix source-ordered indexes.
+
 ## Stage1 / Stage2 setup
 
 For training across stages, download the three EMA packages from the
@@ -141,6 +143,9 @@ torchrun --nnodes="$NNODES" --node-rank="$NODE_RANK" --nproc-per-node=8 \
 ```
 
 ## Resume training
+
+When resuming older checkpoints that used the previous default, add
+`--set data.shuffle_buffer=4096` to preserve their sample order.
 
 Use the original resolved configuration and a complete training checkpoint:
 

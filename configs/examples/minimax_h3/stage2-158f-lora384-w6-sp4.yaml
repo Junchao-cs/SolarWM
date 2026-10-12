@@ -63,6 +63,7 @@ data:
   max_relative_translation: 20.0
   max_camera_absolute_value: 20.0
   seed: 42
+  shuffle_buffer: 32768
   num_workers: 4
   prefetch_factor: 2
   gcs_prefetch_shards: 32
