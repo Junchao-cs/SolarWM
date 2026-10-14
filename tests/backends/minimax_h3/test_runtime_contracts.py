@@ -589,7 +589,11 @@ def test_worker_plan_multiplexer_is_round_robin_and_exactly_resumable() -> None:
     assert [plan.worker_id for plan in prefix] == [0, 1, 2, 3, 0]
     profile = {"schema": "test.h3-encoder.v1", "format": "h3.158f.v1"}
     state = first.state_dict(encoder_profile=profile)
+    preview = first.peek_plans(6)
+    assert len(preview) == 6
+    assert first.state_dict(encoder_profile=profile) == state
     expected = [first.next_plan().sample_id for _ in range(12)]
+    assert [plan.sample_id for plan in preview] == expected[:6]
     resumed = build()
     resumed.load_state_dict(state, encoder_profile=profile)
     assert [resumed.next_plan().sample_id for _ in range(12)] == expected
@@ -854,8 +858,8 @@ def test_h3_reader_treats_tensor_digest_as_offline_metadata(
 
     class Prefetcher:
         @staticmethod
-        def prepare(value: SamplePlan) -> None:
-            prepared.append(value)
+        def schedule_plans(values: tuple[SamplePlan, ...]) -> None:
+            prepared.extend(values)
 
     stream = object.__new__(H3PreencodedStream)
     stream.rows = (row,)
@@ -864,8 +868,11 @@ def test_h3_reader_treats_tensor_digest_as_offline_metadata(
     stream.plan = SimpleNamespace(
         next_plan=lambda: plan,
         current_plan_fingerprint="plan-fingerprint",
+        peek_plans=lambda count: (),
+        num_workers=1,
     )
     stream._shard_prefetcher = Prefetcher()
+    stream._prefetch_depth = 2
     stream.fixed_validation = False
     stream.camera_audit_latents = 47
 

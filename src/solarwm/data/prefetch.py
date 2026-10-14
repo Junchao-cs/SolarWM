@@ -285,6 +285,17 @@ class ShardPrefetcher:
         self.schedule(plan)
         self.wait(plan)
 
+    def schedule_plans(self, plans: Sequence[SamplePlan]) -> None:
+        """Schedule the reader's next shards and retire obsolete queued work."""
+
+        frontier = {row.shard: row for row in (self._row(plan) for plan in plans)}
+        with self._lock:
+            for shard, future in tuple(self._futures.items()):
+                if shard not in frontier and (future.cancel() or future.done()):
+                    self._futures.pop(shard, None)
+        for row in frontier.values():
+            self._schedule_row(row)
+
     def close(self) -> None:
         with self._lock:
             if self._closed:

@@ -16,11 +16,12 @@ from solarwm.data import (
     IndexRow,
     ReaderIdentity,
     SamplingConfig,
+    ShardPrefetcher,
     TarShardReader,
-    build_shard_prefetcher,
     read_index,
     resolver_from_config,
     select_index_rows,
+    shard_prefetch_depth,
 )
 from solarwm.data.sampling import SamplePlan, plan_fingerprint
 from solarwm.errors import DataContractError
@@ -313,6 +314,21 @@ class H3PlanMultiplexer:
         self.next_worker = (self.next_worker + 1) % self.num_workers
         return plan
 
+    def peek_plans(self, count: int) -> tuple[SamplePlan, ...]:
+        """Preview upcoming plans without advancing cursors or generating new epochs."""
+
+        cursors = [worker.cursor for worker in self.workers]
+        next_worker = self.next_worker
+        plans = []
+        for _ in range(count):
+            worker = self.workers[next_worker]
+            if cursors[next_worker] == len(worker.plans):
+                break
+            plans.append(worker.plans[cursors[next_worker]])
+            cursors[next_worker] += 1
+            next_worker = (next_worker + 1) % self.num_workers
+        return tuple(plans)
+
 
 def validate_fixed_validation_rows(
     rows: tuple[IndexRow, ...],
@@ -594,18 +610,14 @@ class H3PreencodedStream:
             state_schema="solarwm.minimax-h3-reader.v3",
         )
         self.identity = self.plan.workers[0].identity
-        prefetch_data = {
-            "transport": {"kind": "gcs" if root.startswith("gs://") else "local"},
-            "partition_mode": self.sampling.partition_mode,
-            "gcs_prefetch_shards": gcs_prefetch_shards,
-        }
-        prefetch_sampler = CanonicalSampler(self.rows, self.sampling, self.identity)
-        self._shard_prefetcher = build_shard_prefetcher(
-            prefetch_data,
-            rows=self.rows,
-            sampler=prefetch_sampler,
-            resolver=resolver,
-            node_leader=int(topology.local_rank) == 0,
+        self._prefetch_depth = shard_prefetch_depth({"gcs_prefetch_shards": gcs_prefetch_shards})
+        self._shard_prefetcher = (
+            ShardPrefetcher(self.rows, resolver, max_workers=min(4, self._prefetch_depth))
+            if root.startswith("gs://")
+            and not self.fixed_validation
+            and self._prefetch_depth
+            and int(topology.sp_rank) == 0
+            else None
         )
 
     @property
@@ -682,7 +694,14 @@ class H3PreencodedStream:
         row = self.rows[plan.row_ordinal]
         prefetcher = getattr(self, "_shard_prefetcher", None)
         if prefetcher is not None:
-            prefetcher.prepare(plan)
+            upcoming = self.plan.peek_plans(self._prefetch_depth * self.plan.num_workers)
+            frontier = {plan.shard: plan}
+            for candidate in upcoming:
+                if len(frontier) >= self._prefetch_depth:
+                    break
+                frontier.setdefault(candidate.shard, candidate)
+            prefetcher.schedule_plans(tuple(frontier.values()))
+            # Demand reads must not queue behind speculative downloads.
         return self.read_artifact(row, plan)
 
     def read_artifact(self, row: IndexRow, plan: SamplePlan) -> H3ArtifactBatch:
