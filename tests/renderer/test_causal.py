@@ -6,13 +6,12 @@ import torch
 
 from solarwm.backends.minimax_h3.distributed import validate_packed_attention_mask
 from solarwm.backends.minimax_h3.layout import H3VisualObservationSpec, build_stage0p5_layout
-from solarwm.renderer.causal import (
+from solarwm.backends.minimax_h3.segmented_attention import (
     H3ChunkKVCache,
     H3SegmentPlan,
-    causal_rows,
     segment_attention,
-    training_plan,
 )
+from solarwm.renderer.causal import causal_rows, training_plan
 
 
 @pytest.mark.parametrize("teacher", [False, True])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import builtins
+
 import pytest
 
 from solarwm.backends.minimax_h3.layout import H3VisualObservationSpec
@@ -143,7 +145,7 @@ def test_tiny_adapter_preserves_native_bidirectional_forward_and_backward(explic
 @pytest.mark.parametrize("teacher", [False, True])
 @pytest.mark.parametrize("checkpointing", [False, True])
 def test_tiny_model_segment_plan_matches_dense_attention_and_excludes_future(
-    teacher, checkpointing
+    teacher, checkpointing, monkeypatch
 ):
     model = tiny_model()
     reference = tiny_model()
@@ -156,6 +158,14 @@ def test_tiny_model_segment_plan_matches_dense_attention_and_excludes_future(
         for begin, end in spans:
             dense[start:stop, begin:end] = True
     differentiable = differentiable_inputs(arguments)
+    original_import = builtins.__import__
+
+    def without_renderer(name, *args, **kwargs):
+        if name == "solarwm.renderer" or name.startswith("solarwm.renderer."):
+            raise AssertionError("H3 attention must not import the renderer extension")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_renderer)
     actual, actual_gradients = output_and_gradients(model, differentiable, attention_mask=plan)
     expected, expected_gradients = output_and_gradients(
         reference,

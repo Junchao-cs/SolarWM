@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .segmented_attention import H3SegmentPlan
+
 
 @dataclass
 class H3DistributedState:
@@ -579,7 +581,7 @@ def prepare_flex_attention_input(tensor: Any) -> Any:
 
 
 def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) -> None:
-    """Require a global, head-broadcast Flex mask before Ulysses sharding.
+    """Require a global segment plan or head-broadcast Flex mask before Ulysses sharding.
 
     Ulysses restores the full packed sequence while distributing heads. H3's
     W6 visibility is head-independent, so the original global mask is reused
@@ -588,7 +590,7 @@ def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) ->
 
     if attention_mask is None:
         return
-    if type(attention_mask).__name__ == "H3SegmentPlan":
+    if isinstance(attention_mask, H3SegmentPlan):
         if int(attention_mask.sequence_length) != int(total_tokens):
             raise ValueError("H3 packed SP segment plan must cover the complete global sequence")
         return
