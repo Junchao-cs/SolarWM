@@ -12,7 +12,8 @@ Third-party source included in this repository
     Adapted from revision 5a5da36c2cc0b91c00bac85b906cbf7cad469e84 under
     src/solarwm/renderer/, with shared observation-packing, attention, LoRA,
     and selective-checkpointing support in the MiniMax-H3 backend.
-    The renderer examples and training configurations come from the same release.
+    The renderer examples, training configurations, and solarrenderer-caption
+    skill and helper scripts come from the same release.
     MiniMax-H3 and SolarRenderer model weights are obtained separately and
     remain subject to the MiniMax H3 Community License and Acceptable Use Policy.
 

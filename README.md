@@ -238,6 +238,7 @@ data:
 - [LTX-2.5 backend](docs/backends/ltx25.md)
 - [MiniMax-H3 backend](docs/backends/minimax-h3.md)
 - [SolarRenderer: structure-conditioned rendering](docs/solar_renderer.md)
+- [SolarRenderer caption skill](skills/solarrenderer-caption/SKILL.md)
 
 ## Acknowledgements
 

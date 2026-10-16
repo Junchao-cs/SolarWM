@@ -109,12 +109,54 @@ overall_soundscape:
 non_diegetic_music:
 ```
 
-Start with the included `prompt.txt` and follow the
-[upstream prompt guide](https://github.com/Enderfga/SolarRenderer/blob/main/docs/prompts.md)
-for the fixed input descriptions and retention rules. If you omit the first
-frame, update the prompt to describe only the inputs you supply. The output of
-this command is video only; the soundscape fields remain part of the model's
-prompt format.
+### Write prompts with the caption skill
+
+Give the local [SolarRenderer caption skill](../skills/solarrenderer-caption/SKILL.md)
+to your coding agent together with the structure video and optional first frame.
+Ask it to write `prompt.txt` in the desired style. The skill uses
+[`conditions.py`](../skills/solarrenderer-caption/scripts/conditions.py) to preserve
+the exact training-time input descriptions and retention rules. You can copy the
+whole `skills/solarrenderer-caption/` folder into your agent's skill directory;
+keep its `scripts/` folder intact.
+
+The rendering commands in this tutorial use `full` conditioning for structure
+plus a first frame, or `structure` conditioning when the first frame is omitted.
+The skill also supports first-frame-only and text-only training captions for
+upstream data workflows. The SolarWM rendering command requires `--structure`.
+
+Validate the included example, or replace its path with your own prompt:
+
+```bash
+python skills/solarrenderer-caption/scripts/check.py \
+  examples/solar_renderer/sem-highway_synthwave/prompt.txt
+```
+
+To prepare a matching first frame, extract the structure video's opening frame
+and print an image-editing prompt. The synthwave example uses `--stylised`;
+omit that flag for a photorealistic result:
+
+```bash
+python skills/solarrenderer-caption/scripts/first_frame.py frame0 \
+  examples/solar_renderer/sem-highway_synthwave/structure.mp4 \
+  "$SOLAR_RENDERER_ROOT/structure-frame0.png"
+python skills/solarrenderer-caption/scripts/first_frame.py prompt \
+  examples/solar_renderer/sem-highway_synthwave/prompt.txt --stylised
+```
+
+Use the extracted frame as the reference for an image model and the printed
+text as its editing prompt. After saving the generated image as `generated.png`
+in `SOLAR_RENDERER_ROOT`, fit it to the rendering canvas:
+
+```bash
+python skills/solarrenderer-caption/scripts/first_frame.py fit \
+  "$SOLAR_RENDERER_ROOT/generated.png" "$SOLAR_RENDERER_ROOT/first.png"
+```
+
+The default canvas is 1344×768; append `768x1344` for a portrait clip. Check that
+the fitted image preserves the structure's camera, layout, subjects, and poses,
+then supply it with `--first`. If you omit the first frame, update the prompt to
+describe only the inputs you supply. The renderer outputs video only; the
+soundscape fields remain part of the prompt format.
 
 ## Block-causal rendering
 
