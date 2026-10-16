@@ -30,7 +30,9 @@ Mike Zheng Shou<sup>3</sup> &nbsp; Li Jiang<sup>1,2</sup>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/License-Apache%202.0-green"></a>
 </p>
 
-<img src="assets/solar_teaser.png" width="100%" alt="SolarWM teaser: one framework for diverse interactive worlds">
+<a href="assets/solar_teaser.png">
+  <img src="assets/solar_teaser.webp" width="100%" alt="SolarWM teaser: one framework for diverse interactive worlds">
+</a>
 
 </div>
 
