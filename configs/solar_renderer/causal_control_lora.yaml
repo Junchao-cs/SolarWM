@@ -1,0 +1,76 @@
+schema: solarwm.run.v1
+action: train
+name: causal_control_lora
+model:
+  family: minimax_h3_renderer
+  architecture: minimax-h3-33b
+  checkpoint_path: /path/to/MiniMax-H3
+  transformer_subfolder: transformer_ref
+  torch_dtype: bfloat16
+  attention_backend: flash
+  adapter:
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+data:
+  silence_latents_path: null
+  encoder_contract_path: null
+  pixel_frames: 158
+  encoded_latents: 47
+  seed: 42
+  omni_root: /path/to/encoded_samples
+  omni_index: /path/to/encoded_samples/train.jsonl
+  omni_length_buckets: true
+distributed:
+  world_size: 8
+  sequence_parallel_size: 4
+  context_parallel_size: 1
+train:
+  stage: stage0p5
+  causal_mode: bidirectional
+  objective: flow_matching
+  micro_batch_size: 1
+  gradient_accumulation_steps: 1
+  global_batch_size: 2
+  max_steps: 19200
+  optimizer:
+    name: fp32_master_adamw
+    learning_rate: 3.0e-05
+    betas:
+    - 0.9
+    - 0.95
+    epsilon: 1.0e-08
+    weight_decay: 0.01
+    gradient_clip: 1.0
+    warmup_steps: 50
+    min_lr_ratio: 1.0
+  fsdp:
+    activation_checkpointing: true
+    saved_attention_blocks: 0
+  causal_omni:
+    mode: teacher
+    chunk: 5
+    window: 6
+    corrupt: 0.0
+  observations:
+    patterns:
+      shared: 1.0
+    dropout:
+      observation: 0.0
+validation:
+  validate_every_steps: 0
+  smoke_step: 0
+checkpoint:
+  initialization:
+    student:
+      path: /path/to/control_lora_checkpoint
+      stage: stage0p5
+      weight_source: live
+  save_every_steps: 1600
+  ema:
+    enabled: true
+    decay: 0.9999
+    start_step: 0
+    update_every_steps: 1
+runtime:
+  output_dir: /path/to/runs/causal_control_lora

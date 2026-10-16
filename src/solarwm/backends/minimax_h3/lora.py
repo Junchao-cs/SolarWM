@@ -155,6 +155,7 @@ def inject_h3_lora(
     adapter_cfg: Mapping[str, Any],
     *,
     base_identity: Mapping[str, Any],
+    ranks: tuple[int, ...] = (384,),
 ) -> tuple[Any, H3LoRARuntime]:
     """Inject standard BF16 PEFT LoRA and verify its realized topology/size."""
 
@@ -167,8 +168,8 @@ def inject_h3_lora(
 
     rank = int(adapter_cfg.get("rank", 0))
     alpha = int(adapter_cfg.get("alpha", 0))
-    if rank != 384 or alpha != 384:
-        raise BackendContractError("H3 adapter requires rank=alpha=384")
+    if rank not in ranks or alpha != rank:
+        raise BackendContractError(f"H3 adapter requires rank=alpha in {list(ranks)}")
     targets = discover_h3_lora_targets(model)
     configuration = peft.LoraConfig(
         r=rank,
@@ -223,7 +224,9 @@ def inject_h3_lora(
         rank=rank,
         alpha=alpha,
     )
-    expected = int(adapter_cfg.get("expected_trainable_parameters", H3_LORA_TRAINABLE_PARAMETERS))
+    expected = int(
+        adapter_cfg.get("expected_trainable_parameters", H3_LORA_TRAINABLE_PARAMETERS * rank // 384)
+    )
     if runtime.parameter_count != expected:
         raise BackendContractError(
             f"H3 LoRA trainable parameters={runtime.parameter_count:,}, expected={expected:,}"
@@ -241,3 +244,153 @@ __all__ = [
     "discover_h3_lora_targets",
     "inject_h3_lora",
 ]
+
+
+def _released_pairs(state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Validate released LoRA tensor names and pair dimensions."""
+
+    import torch
+
+    if not state:
+        raise BackendContractError("LoRA state is empty")
+    pairs: dict[str, dict[str, Any]] = {}
+    for key, value in state.items():
+        match = re.fullmatch(r"(.+)\.lora_([AB])\.weight", key)
+        if match is None:
+            raise BackendContractError(f"LoRA key {key!r} is not <module>.lora_A/B.weight")
+        if not isinstance(value, torch.Tensor) or value.ndim != 2 or not value.is_floating_point():
+            raise BackendContractError(f"LoRA tensor {key!r} must be a floating matrix")
+        if min(value.shape) < 1 or not bool(torch.isfinite(value).all()):
+            raise BackendContractError(f"LoRA tensor {key!r} is empty or non-finite")
+        pairs.setdefault(match.group(1), {})[match.group(2)] = value
+    for name, pair in pairs.items():
+        if set(pair) != {"A", "B"}:
+            raise BackendContractError(f"LoRA for {name} lacks half of its pair")
+        if pair["A"].shape[0] != pair["B"].shape[1]:
+            raise BackendContractError(f"LoRA for {name} has inconsistent ranks")
+    return pairs
+
+
+def merge_lora_delta(
+    model: Any,
+    state: Mapping[str, Any],
+    *,
+    alpha: float | None,
+    rank: int | None,
+    scale: float = 1.0,
+) -> int:
+    """Merge released ``alpha/rank * B @ A`` updates after validating every pair.
+
+    When alpha is absent, each pair uses alpha equal to its own rank.
+    """
+
+    import math
+
+    import torch
+
+    if not math.isfinite(float(scale)):
+        raise BackendContractError("LoRA scale must be finite")
+    if alpha is not None and (
+        not math.isfinite(float(alpha)) or float(alpha) <= 0 or rank is None or rank <= 0
+    ):
+        raise BackendContractError("LoRA alpha and rank must be finite and positive")
+    pairs = _released_pairs(state)
+    modules = dict(model.named_modules())
+    targets = []
+    for name, pair in sorted(pairs.items()):
+        weight = getattr(modules.get(name), "weight", None)
+        down, up = pair["A"], pair["B"]
+        if weight is None or weight.ndim != 2:
+            raise BackendContractError(f"LoRA names absent matrix weight {name}")
+        if (up.shape[0], down.shape[1]) != tuple(weight.shape):
+            raise BackendContractError(f"LoRA shape differs from weight {name}")
+        if rank is not None and down.shape[0] != rank:
+            raise BackendContractError(f"LoRA rank differs at {name}")
+        targets.append((weight, down, up))
+    factor = float(scale) if alpha is None else float(scale) * float(alpha) / int(rank)
+    with torch.no_grad():
+        for weight, down, up in targets:
+            delta = up.to(weight.device, torch.float32) @ down.to(weight.device, torch.float32)
+            weight.copy_((weight.float() + factor * delta).to(weight.dtype))
+    return len(targets)
+
+
+def released_lora_state(path: str) -> dict[str, Any]:
+    """Load released LoRA tensors from safetensors or a weights-only training export."""
+    import torch
+
+    if str(path).endswith(".safetensors"):
+        from safetensors.torch import load_file
+
+        return load_file(str(path))
+    state = torch.load(str(path), map_location="cpu", weights_only=True)
+    return state.get("student_lora", state)
+
+
+def adapter_state_as_released(state: Mapping[str, Any]) -> dict[str, Any]:
+    """A saved run adapter (PEFT keys) as ``<module>.lora_A/B``.
+
+    So a trained adapter can be merged into a base the way a released LoRA is
+    (:func:`merge_lora_delta`), e.g. to make a frozen control LoRA part of a student's base.
+    """
+    prefix = "base_model.model."
+    return {
+        key.removeprefix(prefix): value
+        for key, value in state.items()
+        if re.fullmatch(".+\\.lora_[AB]\\.weight", key)
+    }
+
+
+def seed_lora_from_released(
+    live: Mapping[str, Any],
+    released: Mapping[str, Any],
+    *,
+    live_scale: float,
+    released_scale: float,
+    offset: int = 0,
+) -> int:
+    """Start a live (wider) LoRA from a released one, its update unchanged (DMD).
+
+    ``offset`` places the released pair at rank slots ``[offset, offset + rank)``, keeping the slots
+    before it, so two LoRAs stack into one whose update is their sum (control + four-step LoRA,
+    trained
+    jointly).
+
+    The released pair fills the leading rank slots - ``B`` rescaled by
+    ``released_scale / live_scale`` so ``live_scale * B @ A`` equals the released update - and the
+    spare slots keep their fresh ``A`` with a zero ``B``: the same update, with room to grow.
+    ``live`` is keyed like the run's adapter (PEFT ``base_model.model.`` prefix allowed).
+    Returns the number of modules seeded.
+    """
+    import torch
+
+    by_module: dict[str, dict[str, Any]] = {}
+    for key, value in live.items():
+        match = re.fullmatch("(?:base_model\\.model\\.)?(.+)\\.lora_([AB])\\.weight", key)
+        if match is not None:
+            by_module.setdefault(match.group(1), {})[match.group(2)] = value
+    factor = float(released_scale) / float(live_scale)
+    pairs = _released_pairs(released)
+    with torch.no_grad():
+        for name, pair in sorted(pairs.items()):
+            target = by_module.get(name)
+            if target is None or set(target) != {"A", "B"}:
+                raise BackendContractError(f"released LoRA names {name}, which the live LoRA lacks")
+            down, up = (pair["A"], pair["B"])
+            rank = int(down.shape[0])
+            stop = int(offset) + rank
+            if stop > int(target["A"].shape[0]):
+                raise BackendContractError(
+                    f"released rank {rank} at offset {offset} exceeds "
+                    f"the live rank {int(target['A'].shape[0])} at {name}"
+                )
+            if (
+                tuple(down.shape[1:]) != tuple(target["A"].shape[1:])
+                or up.shape[0] != target["B"].shape[0]
+            ):
+                raise BackendContractError(f"released LoRA shape differs at {name}")
+            a, b = (target["A"], target["B"])
+            a[offset:stop].copy_(down.to(a.device, a.dtype))
+            b[:, offset:].zero_()
+            b[:, offset:stop].copy_((factor * up.float()).to(b.device, b.dtype))
+    return len(pairs)

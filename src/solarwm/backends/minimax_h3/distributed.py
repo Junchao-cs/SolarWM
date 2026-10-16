@@ -588,6 +588,10 @@ def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) ->
 
     if attention_mask is None:
         return
+    if type(attention_mask).__name__ == "H3SegmentPlan":
+        if int(attention_mask.sequence_length) != int(total_tokens):
+            raise ValueError("H3 packed SP segment plan must cover the complete global sequence")
+        return
     if type(attention_mask).__name__ != "BlockMask":
         raise ValueError("H3 packed SP accepts only a global Flex BlockMask or no mask")
     if tuple(attention_mask.seq_lengths) != (total_tokens, total_tokens):

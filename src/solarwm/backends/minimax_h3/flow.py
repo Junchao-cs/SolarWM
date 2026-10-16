@@ -6,6 +6,7 @@ identity can be tested without a GPU runtime.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -161,3 +162,22 @@ __all__ = [
     "shift_sigma",
     "velocity_target",
 ]
+
+
+def explicit_schedule(sigmas: Sequence[float]) -> H3FlowSchedule:
+    """A schedule given as its sigma list (a released few-step adapter's own steps), descending
+    from at most 1 to 0."""
+
+    values = np.asarray([float(x) for x in sigmas], dtype=np.float32)
+    if (
+        values.ndim != 1
+        or values.size < 2
+        or not np.isfinite(values).all()
+        or values[0] > 1.0
+        or values[-1] != 0.0
+        or np.any(np.diff(values) >= 0)
+    ):
+        raise ValueError(
+            f"a schedule descends strictly from at most 1 to exactly 0, got {list(sigmas)}"
+        )
+    return H3FlowSchedule(sigmas=values, timesteps=1.0 - values[:-1])

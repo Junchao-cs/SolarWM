@@ -1,0 +1,92 @@
+schema: solarwm.run.v1
+action: train
+name: causal_structure_guided_4step
+model:
+  family: minimax_h3_renderer
+  architecture: minimax-h3-33b
+  checkpoint_path: /path/to/MiniMax-H3
+  transformer_subfolder: transformer_ref
+  torch_dtype: bfloat16
+  attention_backend: flash
+  adapter:
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+data:
+  silence_latents_path: null
+  encoder_contract_path: null
+  pixel_frames: 158
+  encoded_latents: 47
+  seed: 42
+  omni_root: /path/to/encoded_samples
+  omni_index: /path/to/encoded_samples/train.jsonl
+  omni_length_buckets: true
+distributed:
+  world_size: 8
+  sequence_parallel_size: 8
+  context_parallel_size: 1
+train:
+  stage: stage0p5
+  causal_mode: bidirectional
+  objective: dmd
+  micro_batch_size: 1
+  gradient_accumulation_steps: 1
+  global_batch_size: 1
+  max_steps: 1600
+  optimizer:
+    name: fp32_master_adamw
+    learning_rate: 2.0e-05
+    betas:
+    - 0.0
+    - 0.9
+    epsilon: 1.0e-08
+    weight_decay: 0.01
+    gradient_clip: 1.0
+    warmup_steps: 0
+    min_lr_ratio: 1.0
+  fsdp:
+    activation_checkpointing: true
+    saved_attention_blocks: 0
+    frozen_base_shard_size: 8
+  observations:
+    patterns:
+      shared: 1.0
+    dropout:
+      observation: 0.0
+  critic_optimizer:
+    name: fp32_master_adamw
+    learning_rate: 5.0e-05
+    betas:
+    - 0.9
+    - 0.999
+    epsilon: 1.0e-08
+    weight_decay: 0.0
+    gradient_clip: 1.0
+    warmup_steps: 0
+    min_lr_ratio: 1.0
+  dmd:
+    mode: causal
+    decoupled: true
+    student_init: /path/to/causal_control_lora_checkpoint
+    accel_init: /path/to/solarrenderer_4step_lora.safetensors
+    control: /path/to/control_lora_checkpoint
+    causal_stream:
+      chunk: 5
+      window: 6
+    forwards: 4
+    critic_updates_per_student: 5
+    score_shift: 12.0
+    structure_guidance: 1.5
+validation:
+  validate_every_steps: 0
+  smoke_step: 0
+checkpoint:
+  save_every_steps: 400
+  ema:
+    enabled: false
+    decay: 0.9999
+    start_step: 0
+    update_every_steps: 1
+  initialization: {}
+runtime:
+  output_dir: /path/to/runs/causal_structure_guided_4step

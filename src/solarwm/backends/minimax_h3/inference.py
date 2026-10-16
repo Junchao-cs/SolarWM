@@ -24,8 +24,15 @@ def camera_fingerprint(batch: H3ArtifactBatch) -> str:
     return digest.hexdigest()
 
 
+def decoded_pixel_frames(latent_frames: int) -> int:
+    """The VisualVAE writes ``17n+5`` pixel frames for the ``5n+2`` latent frames it was given."""
+    if latent_frames < 2 or (latent_frames - 2) % 5:
+        raise RuntimeError(f"H3 latents hold {latent_frames} frames, which is not 5n+2")
+    return 17 * ((latent_frames - 2) // 5) + 5
+
+
 def decode_h3_latents(video_vae: Any, latents: Any, *, device: Any) -> Any:
-    """Run official latent de-normalization and the 47->158 VisualVAE decode."""
+    """Run official latent de-normalization and the 5n+2 -> 17n+5 VisualVAE decode."""
 
     import torch
 
@@ -44,9 +51,16 @@ def decode_h3_latents(video_vae: Any, latents: Any, *, device: Any) -> Any:
     pixel_mean = torch.tensor((0.485, 0.456, 0.406), device=device).view(1, -1, 1, 1, 1)
     pixel_std = torch.tensor((0.229, 0.224, 0.225), device=device).view(1, -1, 1, 1, 1)
     decoded = (decoded.float() * pixel_std + pixel_mean).clamp(0, 1)
-    if tuple(decoded.shape) != (1, 3, 158, 768, 1344):
+    expected = (
+        1,
+        3,
+        decoded_pixel_frames(int(latents.shape[-3])),
+        int(latents.shape[-2]) * 16,
+        int(latents.shape[-1]) * 16,
+    )
+    if tuple(decoded.shape) != expected:
         raise RuntimeError(
-            f"H3 VisualVAE decoded {tuple(decoded.shape)}, expected [1,3,158,768,1344]"
+            f"H3 VisualVAE decoded {tuple(decoded.shape)}, expected {list(expected)}"
         )
     return decoded
 

@@ -9,8 +9,13 @@ of the reproduced result.
 | Wan 2.2 | 3.10 | 2.5.1 / 12.4 | FlashAttention 2.8.3, Diffusers 0.38.0, Transformers 5.12.1 |
 | LTX-2.5 | 3.12 | 2.9.1 / 12.8 | `ltx-core`, `ltx-pipelines`, and `ltx-trainer` 1.2.0; Transformers 5.14.1 |
 | MiniMax-H3 | 3.10 | 2.6.0 / 12.4 | FlashAttention 2.8.3, PEFT 0.20.0, Transformers 5.12.1, Diffusers 0.40.0 |
+| SolarRenderer | 3.10 | 2.8.0 / 12.8 | FlashAttention 2.7.4.post1, PEFT 0.20.0, Transformers 5.14.1, Diffusers 0.40.0 |
 
-Do not install these three stacks into one environment. Start from the matching
+SolarRenderer uses its own environment. Follow the
+[SolarRenderer tutorial](../docs/solar_renderer.md#install) for installation,
+structure-conditioned inference, and LoRA training.
+
+Do not install these stacks into one environment. Start from the matching
 CUDA image or build an equivalent environment, then install SolarWM without
 letting its optional helpers replace the already selected CUDA packages:
 

@@ -6,6 +6,7 @@ import functools
 import math
 from collections.abc import Iterable
 from datetime import timedelta
+from typing import Any
 
 import torch
 import torch.distributed as dist
@@ -22,6 +23,7 @@ from torch.distributed.fsdp import (
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
 )
+from torch.utils.checkpoint import CheckpointPolicy, create_selective_checkpoint_contexts
 
 from .distributed import get_dp_group, init_sequence_parallel
 
@@ -49,9 +51,15 @@ def wrap_h3_fsdp(
     ignored_parameters: Iterable[torch.nn.Parameter],
     activation_checkpointing: bool = True,
     frozen_base_shard_size: int | None = None,
+    saved_attention_blocks: int = 0,
 ) -> torch.nn.Module:
-    """Wrap 50 H3 blocks and the six FP32 leaf owners over logical DP."""
+    """Wrap 50 H3 blocks and the six FP32 leaf owners over logical DP.
 
+    The first ``saved_attention_blocks`` cache attention outputs during activation
+    checkpointing; all remaining operations are recomputed in backward."""
+
+    if not 0 <= saved_attention_blocks <= 50:
+        raise ValueError("saved_attention_blocks must be between 0 and 50")
     if not dist.is_initialized() or dist.get_world_size() == 1:
         if activation_checkpointing and hasattr(model, "enable_gradient_checkpointing"):
             model.enable_gradient_checkpointing()
@@ -93,16 +101,55 @@ def wrap_h3_fsdp(
         ignored_states=ignored or None,
     )
     if activation_checkpointing:
-        wrapper = functools.partial(checkpoint_wrapper, checkpoint_impl=CheckpointImpl.NO_REENTRANT)
+        blocks_in_order = [m for m in wrapped.modules() if isinstance(m, transformer_block_cls)]
+        keep = {id(m) for m in blocks_in_order[:saved_attention_blocks]}
         apply_activation_checkpointing(
             wrapped,
-            checkpoint_wrapper_fn=wrapper,
+            checkpoint_wrapper_fn=lambda module: block_checkpoint_wrapper(
+                module, save_attention=id(module) in keep
+            ),
             check_fn=lambda module: isinstance(module, transformer_block_cls),
         )
         blocks = sum(isinstance(module, transformer_block_cls) for module in wrapped.modules())
         if blocks != 50:
             raise RuntimeError(f"H3 activation checkpointing expected 50 blocks, got {blocks}")
     return wrapped
+
+
+@functools.cache
+def _attention_ops() -> frozenset:
+    """Collect native attention kernels and registered FlashAttention operators."""
+    names = (
+        "_scaled_dot_product_cudnn_attention",
+        "_scaled_dot_product_flash_attention",
+        "_scaled_dot_product_efficient_attention",
+        "_scaled_dot_product_flash_attention_for_cpu",
+    )
+    ops = {getattr(torch.ops.aten, name).default for name in names if hasattr(torch.ops.aten, name)}
+    flash = torch.ops.flash_attn
+    for name in ("_flash_attn_forward", "_flash_attn_varlen_forward"):
+        if hasattr(flash, name):
+            ops.add(getattr(flash, name).default)
+    return frozenset(ops)
+
+
+def keep_attention(ctx: Any, op: Any, *args: Any, **kwargs: Any) -> CheckpointPolicy:
+    """Selective-checkpoint policy: keep what attention returns, recompute everything else."""
+    del ctx, args, kwargs
+    return (
+        CheckpointPolicy.MUST_SAVE if op in _attention_ops() else CheckpointPolicy.PREFER_RECOMPUTE
+    )
+
+
+def block_checkpoint_wrapper(module: torch.nn.Module, *, save_attention: bool) -> torch.nn.Module:
+    """A block recomputed in backward, optionally without running its attention again."""
+    if not save_attention:
+        return checkpoint_wrapper(module, checkpoint_impl=CheckpointImpl.NO_REENTRANT)
+    return checkpoint_wrapper(
+        module,
+        checkpoint_impl=CheckpointImpl.NO_REENTRANT,
+        context_fn=functools.partial(create_selective_checkpoint_contexts, keep_attention),
+    )
 
 
 @torch.no_grad()

@@ -156,6 +156,24 @@ def read_encoder_contract(path: str | Path) -> tuple[Mapping[str, Any], Mapping[
 
 
 @dataclass(frozen=True)
+class H3VisualObservation:
+    """One untyped visual input: ``[24,f,h,w]`` latents of any length and size.
+
+    ``frames`` lists the target latent frames it is aligned with (a depth, pose or
+    edge video, the source of an edit, a keyframe, a low-resolution preview);
+    ``None`` means it is not a view of the clip (a subject, a scene, a style, a
+    motion clip). ``degree`` is how far it is trusted, the condition level by default.
+    """
+
+    latents: Any
+    frames: tuple[int, ...] | None = None
+    degree: float = 0.999
+    # Where an aligned observation lies on the target canvas: ``(x0, y0, x1, y1)`` in
+    # [0, 1], one per frame or one for all; the whole canvas by default.
+    boxes: tuple[tuple[float, float, float, float], ...] | None = None
+
+
+@dataclass(frozen=True)
 class H3ArtifactBatch:
     sample_id: str
     start_frame: int
@@ -173,6 +191,10 @@ class H3ArtifactBatch:
     rollout_camera_viewmats: Any = None
     rollout_camera_K: Any = None
     dataset_source: str = ""
+    text_prompt_embeds: Any = None
+    text_prompt_tags: Any = None
+    visual_observations: tuple[H3VisualObservation, ...] | None = None
+    known_degrees: Any = None
 
 
 @dataclass

@@ -57,6 +57,7 @@ and long-horizon inference.
 
 ## News
 
+- **October 16, 2026:** [SolarRenderer](https://github.com/Enderfga/SolarRenderer) brings four-step, structure-conditioned video rendering to SolarWM, with bidirectional and block-causal training and inference on MiniMax-H3. Follow the [SolarRenderer tutorial](docs/solar_renderer.md) to render from a structure video, an optional first frame, and a prompt.
 - **September 13, 2026:** We release **SolarWM-H3**, the first MiniMax-H3-based world model for streaming, few-step interaction. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for all three stages: Stage0.5, Stage1, and Stage2. Get started with the [H3 guide](docs/backends/minimax-h3.md).
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
@@ -236,6 +237,7 @@ data:
 - [Wan 2.2 I2V-A14B backend](docs/backends/wan22-i2v-a14b.md)
 - [LTX-2.5 backend](docs/backends/ltx25.md)
 - [MiniMax-H3 backend](docs/backends/minimax-h3.md)
+- [SolarRenderer: structure-conditioned rendering](docs/solar_renderer.md)
 
 ## Acknowledgements
 
@@ -245,7 +247,9 @@ We gratefully thank the teams behind
 [MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3) for releasing the code
 and pretrained models that make the SolarWM backbone family possible. We also
 thank the authors of all datasets and open-source projects listed in
-[NOTICE](NOTICE).
+[NOTICE](NOTICE). The structure-conditioned rendering integration is adapted
+from [SolarRenderer](https://github.com/Enderfga/SolarRenderer) by Guian Fang
+and collaborators; see the [SolarRenderer paper](https://enderfga.cn/data/solarrenderer.pdf).
 
 ## Citation
 
@@ -263,6 +267,20 @@ Paper: https://arxiv.org/abs/2609.02886
       archivePrefix={arXiv},
       primaryClass={cs.CV},
       url={https://arxiv.org/abs/2609.02886}, 
+}
+```
+
+If you use the SolarRenderer integration, please also cite
+[SolarRenderer: Few-Step Generative Reference Rendering](https://enderfga.cn/data/solarrenderer.pdf):
+
+```bibtex
+@article{fang2026solarrenderer,
+  title  = {SolarRenderer: Few-Step Generative Reference Rendering},
+  author = {Fang, Guian and Qian, Shengju and Lu, Dongyue and
+            Huang, Junchao and Jiang, Lutao and Wang, Xin and
+            Song, Yiren and Jiang, Li and Shou, Mike Zheng},
+  year   = {2026},
+  url    = {https://enderfga.cn/data/solarrenderer.pdf}
 }
 ```
 

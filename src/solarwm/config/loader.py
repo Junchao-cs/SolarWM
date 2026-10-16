@@ -9,7 +9,7 @@ import math
 import os
 import re
 import tempfile
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -210,7 +210,12 @@ def _validate_top_level(config: Mapping[str, Any]) -> None:
             raise ConfigurationError(f"{section} must be a mapping")
 
 
-def load_config(path: str | Path, overrides: Sequence[str] = ()) -> ResolvedConfig:
+def load_config(
+    path: str | Path,
+    overrides: Sequence[str] = (),
+    *,
+    route_validator: Callable[[Mapping[str, Any]], Any] | None = None,
+) -> ResolvedConfig:
     """Load a config without executing constructors or arbitrary code."""
 
     source_path = Path(path).resolve()
@@ -233,7 +238,7 @@ def load_config(path: str | Path, overrides: Sequence[str] = ()) -> ResolvedConf
     # Import lazily to keep configuration loading usable without torch.
     from .routes import validate_route
 
-    validate_route(values)
+    (route_validator or validate_route)(values)
     resolved = canonical_json(values)
     return ResolvedConfig(
         path=source_path,

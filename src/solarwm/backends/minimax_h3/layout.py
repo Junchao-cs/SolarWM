@@ -2,7 +2,23 @@
 
 The Stage0.5 document is ordered as::
 
-    [Qwen joint image/text | VisualVAE anchor | audio | target video]
+    [Qwen joint image/text | VisualVAE anchor | visual observations | audio | target video]
+
+A visual observation is any image or video latent, of any size and length, and
+carries no type. Only its placement says how it relates to the clip:
+
+* *aligned* with a list of target latent frames: its frames share those frames'
+  rotary times and camera poses, and its spatial grid is laid over the target's
+  canvas whatever its resolution or aspect ratio. A depth, pose or edge video, the
+  source of an edit, a keyframe, a low-resolution preview are all this case. An
+  optional box per frame lays it over a part of the canvas instead: a face crop
+  that follows a face, a detail patch, an object pasted at a location.
+* *free* (no frames): it is not a view of the clip. It sits before the clip on the
+  rotary time axis, in order, on its own spatial grid, and never takes part in
+  camera PRoPE. A subject, an object, a scene, a style, a motion clip. The clock
+  is the one of the released ``ref2va`` layout: it starts where the text ends, an
+  image advances it by one slot, a video by its own rotary span, and the clip
+  (audio, anchors and target alike) starts where the free observations left it.
 
 Qwen vision rows may carry ``VIDEO_TAG`` while still belonging to the text
 segment.  Camera PRoPE must therefore use ``camera_video_indices`` and never
@@ -28,6 +44,45 @@ CLEAN_VIDEO_ROLE = 2
 NOISY_VIDEO_ROLE = 3
 TARGET_AUDIO_ROLE = AUDIO_ROLE
 TARGET_VIDEO_ROLE = NOISY_VIDEO_ROLE
+
+
+@dataclass(frozen=True)
+class H3VisualObservationSpec:
+    """Shape and placement of one visual observation; ``frames=None`` is a free one."""
+
+    num_frames: int
+    height: int
+    width: int
+    frames: tuple[int, ...] | None = None
+    # ``(x0, y0, x1, y1)`` in the target's normalized canvas, one per frame or one for all.
+    boxes: tuple[tuple[float, float, float, float], ...] | None = None
+
+
+def _canvas_grid(
+    item: H3VisualObservationSpec,
+    box: tuple[float, float, float, float],
+    target_height: int,
+    target_width: int,
+    patch_h: int,
+    patch_w: int,
+) -> np.ndarray:
+    """Spatial positions of one observation frame laid over ``box`` of the target canvas."""
+
+    x0, y0, x1, y1 = (float(value) for value in box)
+    if not (0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0):
+        raise ValueError(f"visual observation box {box} must lie inside the unit canvas")
+    sqrt_area = np.sqrt(target_height * target_width)
+    axes = []
+    for size, low, high, count in (
+        (target_height, y0, y1, item.height // patch_h),
+        (target_width, x0, x1, item.width // patch_w),
+    ):
+        ratio = size / sqrt_area
+        left = (1.0 - ratio) / 2.0
+        steps = low + (high - low) * np.arange(count, dtype=np.float64) / count
+        axes.append((left + ratio * steps) * 32)
+    grid_h, grid_w = np.meshgrid(axes[0], axes[1], indexing="ij")
+    return np.stack((grid_h.reshape(-1), grid_w.reshape(-1)), axis=-1)
 
 
 def _indices(start: int, stop: int) -> np.ndarray:
@@ -70,6 +125,18 @@ class H3PackedLayout:
     stage: str
     window_chunks: int | None = None
     chunk_latent_frames: int | None = None
+    # Visual observations are the tail of ``condition_video_indices``; row counts per item.
+    observation_rows: tuple[int, ...] = ()
+
+    @property
+    def num_observation_rows(self) -> int:
+        return int(sum(self.observation_rows))
+
+    @property
+    def observation_video_indices(self) -> np.ndarray:
+        return self.condition_video_indices[
+            self.num_condition_video_rows - self.num_observation_rows :
+        ]
 
     @property
     def sequence_length(self) -> int:
@@ -162,6 +229,7 @@ def _base_layout(
     stage: str,
     chunk_latent_frames: int | None,
     window_chunks: int | None,
+    observations: tuple[H3VisualObservationSpec, ...] = (),
 ) -> H3PackedLayout:
     tags, rows_per_frame = _validate_layout_inputs(
         text_token_tags,
@@ -174,7 +242,27 @@ def _base_layout(
     )
     _, patch_h, patch_w = patch_size
     num_text = int(tags.size)
-    num_condition_video = len(keyframe_anchors) * rows_per_frame
+    observation_rows = []
+    for item in observations:
+        if item.num_frames <= 0 or item.height <= 0 or item.width <= 0:
+            raise ValueError(f"visual observation {item} is empty")
+        if item.height % patch_h or item.width % patch_w:
+            raise ValueError(f"visual observation grid {item} does not fit {patch_size}")
+        if item.frames is not None and (
+            len(item.frames) != item.num_frames
+            or min(item.frames) < 0
+            or max(item.frames) >= num_latent_frames
+        ):
+            raise ValueError(f"visual observation {item} is not aligned with the target frames")
+        if item.boxes is not None and (
+            item.frames is None or len(item.boxes) not in (1, item.num_frames)
+        ):
+            raise ValueError(f"visual observation {item} needs frames and one box per frame")
+        observation_rows.append(
+            item.num_frames * (item.height // patch_h) * (item.width // patch_w)
+        )
+    num_anchor_video = len(keyframe_anchors) * rows_per_frame
+    num_condition_video = num_anchor_video + sum(observation_rows)
     num_audio = num_audio_latents * audio_channels
     num_target_video = num_latent_frames * rows_per_frame
     condition_start = num_text
@@ -186,15 +274,28 @@ def _base_layout(
     position_ids[:num_text, 0] = np.arange(num_text, dtype=np.float64)
     frame_grid, width_grid = frame_position_grid(latent_height, latent_width, patch_h, patch_w)
 
+    # Free observations advance the rotary clock ahead of the clip, like the released ref2va layout.
+    origin = float(num_text)
+    free_times: list[np.ndarray | None] = []
+    for item in observations:
+        if item.frames is not None:
+            free_times.append(None)
+        elif item.num_frames == 1:
+            free_times.append(np.asarray([origin]))
+            origin += 1.0
+        else:
+            free_times.append(temporal_position_grid(item.num_frames, origin))
+            origin += float(np.diff(temporal_position_grid(item.num_frames + 1, 0.0)).sum())
+
     anchor_frame_ids: list[int] = []
-    temporal = temporal_position_grid(num_latent_frames, float(num_text))
+    temporal = temporal_position_grid(num_latent_frames, origin)
     for index, anchor in enumerate(keyframe_anchors):
         if anchor == "first":
-            anchor_time = float(num_text)
+            anchor_time = origin
             anchor_frame_ids.append(0)
         elif anchor == "last":
             anchor_time = float(
-                temporal_position_grid(num_latent_frames + 1, float(num_text))[-1] - 5.0 / 3.0
+                temporal_position_grid(num_latent_frames + 1, origin)[-1] - 5.0 / 3.0
             )
             anchor_frame_ids.append(num_latent_frames - 1)
         else:
@@ -204,9 +305,42 @@ def _base_layout(
         position_ids[rows, 0] = anchor_time
         position_ids[rows, 1:] = frame_grid
 
+    # Aligned observations take their frames' rotary times and the target's canvas; free
+    # ones take their slot on the clock and keep their own spatial grid.
+    start = condition_start + num_anchor_video
+    observation_camera_frames: list[np.ndarray] = []
+    observation_camera_rows: list[np.ndarray] = []
+    for item, count, free in zip(observations, observation_rows, free_times, strict=True):
+        per_frame = count // item.num_frames
+        if free is not None:
+            frame_times = free
+        else:
+            frame_times = temporal[np.asarray(item.frames, dtype=np.int64)]
+            observation_camera_rows.append(_indices(start, start + count))
+            observation_camera_frames.append(
+                np.repeat(np.asarray(item.frames, dtype=np.int64), per_frame)
+            )
+        rows = slice(start, start + count)
+        position_ids[rows, 0] = np.repeat(frame_times, per_frame)
+        if item.frames is None:
+            grid = frame_position_grid(item.height, item.width, patch_h, patch_w)[0]
+            position_ids[rows, 1:] = np.tile(grid, (item.num_frames, 1))
+        else:
+            boxes = item.boxes or ((0.0, 0.0, 1.0, 1.0),)
+            grids = [
+                _canvas_grid(item, box, latent_height, latent_width, patch_h, patch_w)
+                for box in boxes
+            ]
+            position_ids[rows, 1:] = (
+                np.tile(grids[0], (item.num_frames, 1))
+                if len(grids) == 1
+                else np.concatenate(grids, axis=0)
+            )
+        start += count
+
     if num_audio:
         audio_rows = slice(audio_start, target_start)
-        audio_time = float(num_text) + np.arange(num_audio_latents, dtype=np.float64)
+        audio_time = origin + np.arange(num_audio_latents, dtype=np.float64)
         position_ids[audio_rows, 0] = np.tile(audio_time, audio_channels)
         position_ids[audio_rows, 2] = np.concatenate(
             (
@@ -252,8 +386,17 @@ def _base_layout(
         else _empty_indices()
     )
     target_camera_frames = np.repeat(np.arange(num_latent_frames, dtype=np.int64), rows_per_frame)
-    camera_video_indices = np.concatenate((condition_video_indices, target_video_indices))
-    camera_frame_ids = np.concatenate((condition_camera_frames, target_camera_frames))
+    # Aligned observations are views along the trajectory; free ones are not.
+    camera_video_indices = np.concatenate(
+        (
+            condition_video_indices[:num_anchor_video],
+            *observation_camera_rows,
+            target_video_indices,
+        )
+    )
+    camera_frame_ids = np.concatenate(
+        (condition_camera_frames, *observation_camera_frames, target_camera_frames)
+    )
 
     return H3PackedLayout(
         position_ids=position_ids,
@@ -284,6 +427,7 @@ def _base_layout(
         stage=stage,
         window_chunks=window_chunks,
         chunk_latent_frames=chunk_latent_frames,
+        observation_rows=tuple(observation_rows),
     )
 
 
@@ -297,6 +441,7 @@ def build_stage0p5_layout(
     patch_size: tuple[int, int, int] = (1, 2, 2),
     audio_channels: int = 2,
     keyframe_anchors: tuple[str, ...] = ("first",),
+    observations: tuple[H3VisualObservationSpec, ...] = (),
 ) -> H3PackedLayout:
     """Build Stage0.5's full-attention packed document."""
 
@@ -312,6 +457,7 @@ def build_stage0p5_layout(
         stage="stage0p5",
         chunk_latent_frames=None,
         window_chunks=None,
+        observations=observations,
     )
 
 
@@ -425,15 +571,31 @@ def build_row_timesteps(
     text_timestep: object | None = None,
     condition_video_timestep: float = 0.999,
     clean_video_timestep: float = 1.0,
+    observation_timesteps: object | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return sorted distinct times and each row's index into that array."""
+    """Return sorted distinct times and each row's index into that array.
+
+    ``observation_timesteps`` gives one known degree per visual observation; they
+    default to the condition level.
+    """
 
     video_values = np.asarray(video_timestep, dtype=np.float32).reshape(-1)
     if layout.stage == "stage0p5":
-        if video_values.size != 1:
-            raise ValueError("Stage0.5 video_timestep must be scalar")
-        noisy_values = np.full(layout.noisy_video_indices.size, video_values[0], dtype=np.float32)
-        default_text = float(video_values[0])
+        rows = int(layout.noisy_video_indices.size)
+        if video_values.size == 1:
+            noisy_values = np.full(rows, video_values[0], dtype=np.float32)
+            default_text = float(video_values[0])
+        else:
+            # A known-degree field: one time per latent frame or per target row.
+            if video_values.size == rows // layout.rows_per_video_frame:
+                noisy_values = np.repeat(video_values, layout.rows_per_video_frame)
+            elif video_values.size == rows:
+                noisy_values = video_values
+            else:
+                raise ValueError("Stage0.5 video_timestep must be scalar, per-frame, or per-row")
+            if text_timestep is None:
+                raise ValueError("a Stage0.5 known-degree field requires an explicit text_timestep")
+            default_text = 0.0
     elif layout.stage == "stage1":
         chunk_frames = int(layout.chunk_latent_frames or 0)
         num_frames = layout.noisy_video_indices.size // layout.rows_per_video_frame
@@ -464,6 +626,13 @@ def build_row_timesteps(
     row_times[layout.condition_video_indices] = scalar(
         condition_video_timestep, "condition_video_timestep"
     )
+    if observation_timesteps is not None:
+        degrees = np.asarray(observation_timesteps, dtype=np.float32).reshape(-1)
+        if degrees.size != len(layout.observation_rows):
+            raise ValueError("observation_timesteps needs one degree per visual observation")
+        row_times[layout.observation_video_indices] = np.repeat(
+            degrees, np.asarray(layout.observation_rows, dtype=np.int64)
+        )
     row_times[layout.audio_indices] = scalar(audio_timestep, "audio_timestep")
     row_times[layout.clean_video_indices] = scalar(clean_video_timestep, "clean_video_timestep")
     row_times[layout.noisy_video_indices] = noisy_values
@@ -577,6 +746,7 @@ __all__ = [
     "TEXT_TAG",
     "VIDEO_TAG",
     "H3PackedLayout",
+    "H3VisualObservationSpec",
     "build_row_timesteps",
     "build_stage0p5_layout",
     "build_stage1_layout",

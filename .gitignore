@@ -8,6 +8,7 @@ htmlcov/
 build/
 dist/
 .venv/
+.venv-*/
 .venv
 venv/
 # Backend images intentionally use incompatible torch/CUDA stacks; a single
@@ -21,6 +22,7 @@ checkpoints/
 *.pt
 *.pth
 *.safetensors
+!src/solarwm/renderer/assets/h3_silence_153_158_170.safetensors
 *.tar
 *.tar.gz
 *.part

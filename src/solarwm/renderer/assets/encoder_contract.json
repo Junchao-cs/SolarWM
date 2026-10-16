@@ -1,0 +1,115 @@
+{
+  "camera_convention": "optional_absolute_c2w+normalized_K",
+  "extras": {
+    "encoder_identity": "official-minimax-h3-ref2va-modular-codec",
+    "frame_sampling": "24fps_resample_then_contiguous_crop",
+    "optional_tensors": {
+      "camera_K": {
+        "dtype": "float32",
+        "shape": [
+          null,
+          3,
+          3
+        ]
+      },
+      "camera_c2w": {
+        "dtype": "float32",
+        "shape": [
+          null,
+          4,
+          4
+        ]
+      },
+      "known_degrees": {
+        "dtype": "float16",
+        "shape": [
+          null
+        ]
+      },
+      "observation_{index}_latents": {
+        "dtype": "bfloat16",
+        "shape": [
+          24,
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    "prompt_reference_visibility": "Reference vision remains in prompt embeddings if packed observation rows are dropped.",
+    "qwen_hidden_state": 50,
+    "qwen_presentation": "ref2va_reference_list+verbatim_prompt_or_t2va_verbatim_prompt",
+    "reference_metadata": "omni.observations: frames, degree, boxes",
+    "shape_policy": {
+      "aligned_still": "first_latent_of_video_vae_encoding",
+      "latent_frames": "5n+2",
+      "pixel_frames": "17n+5",
+      "target_grid": [
+        [
+          48,
+          84
+        ],
+        [
+          84,
+          48
+        ]
+      ]
+    },
+    "silence_artifact_profile": {
+      "artifact": "official-audiovae-encoded-stereo-zero-waveform",
+      "audio_hop_length": 800,
+      "audio_sampling_rate": 32000,
+      "format": "h3.158f.v1",
+      "normalization": "audio_vae.config.latents_mean_std",
+      "posterior": "mode",
+      "schema": "solarwm.minimax-h3-silence-profile.v1",
+      "tensor": {
+        "dtype": "bfloat16",
+        "key": "silence_158f",
+        "shape": [
+          2,
+          32,
+          263
+        ]
+      },
+      "waveform": "real_stereo_zero_waveform"
+    },
+    "source_fps_policy": "resample_to_24fps",
+    "video_vae_normalization": "config.latents_mean_std",
+    "video_vae_posterior": "sample(seed=42)-fp16-round"
+  },
+  "family": "minimax_h3",
+  "format_version": "solarrenderer.ref2va.v1",
+  "height": 768,
+  "latent_frames": 47,
+  "pixel_frames": 158,
+  "schema": "solarwm.encoder.v1",
+  "tensors": [
+    {
+      "dtype": "bfloat16",
+      "name": "target_latents",
+      "shape": [
+        24,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "dtype": "bfloat16",
+      "name": "prompt_embeds",
+      "shape": [
+        null,
+        5120
+      ]
+    },
+    {
+      "dtype": "int64",
+      "name": "text_token_tags",
+      "shape": [
+        null
+      ]
+    }
+  ],
+  "width": 1344
+}

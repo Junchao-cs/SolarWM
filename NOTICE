@@ -7,6 +7,15 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party source included in this repository
 --------------------------------------------------------------------------------
 
+  SolarRenderer (https://github.com/Enderfga/SolarRenderer), Apache-2.0
+    Copyright 2026 SolarRenderer authors.
+    Adapted from revision 5a5da36c2cc0b91c00bac85b906cbf7cad469e84 under
+    src/solarwm/renderer/, with shared observation-packing, attention, LoRA,
+    and selective-checkpointing support in the MiniMax-H3 backend.
+    The renderer examples and training configurations come from the same release.
+    MiniMax-H3 and SolarRenderer model weights are obtained separately and
+    remain subject to the MiniMax H3 Community License and Acceptable Use Policy.
+
   Wan 2.2 (Alibaba Wan Team), Apache-2.0
     Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
     Vendored under src/solarwm/backends/wan22/runtime/modeling/:

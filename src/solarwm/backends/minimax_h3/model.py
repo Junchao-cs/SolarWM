@@ -499,7 +499,11 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             key = sequence_model_parallel_all_to_all_4D(key, scatter_dim=2, gather_dim=1)
             value = sequence_model_parallel_all_to_all_4D(value, scatter_dim=2, gather_dim=1)
 
-        if _is_flex_block_mask(attention_mask):
+        if type(attention_mask).__name__ == "H3SegmentPlan":
+            from solarwm.renderer.causal import segment_attention
+
+            attended = segment_attention(query, key, value, attention_mask, attn.h3_layer_index)
+        elif _is_flex_block_mask(attention_mask):
             expected_shape = (int(query.shape[1]), int(key.shape[1]))
             if tuple(attention_mask.seq_lengths) != expected_shape:
                 raise ValueError(
@@ -667,6 +671,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         rotary_emb = self.rope(position_ids)
         needs_control = (
             _is_flex_block_mask(attention_mask)
+            or type(attention_mask).__name__ == "H3SegmentPlan"
             or fused_prope is not None
             or cam_viewmats is not None
             or cam_K is not None

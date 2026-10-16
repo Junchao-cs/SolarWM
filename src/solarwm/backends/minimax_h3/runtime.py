@@ -463,7 +463,6 @@ class H3TrainingRuntime:
         torch, _diffusers, _transformers = require_h3_runtime()
         import torch.distributed as dist
 
-        from .ema import H3ShardedEMA
         from .fsdp import finite_clip_norm, initialize_distributed, wrap_h3_fsdp
         from .lora import inject_h3_lora
         from .optimizer import FP32MasterAdamW
@@ -502,6 +501,7 @@ class H3TrainingRuntime:
                 modules.transformer.delta_embedding.linear_2,
             )
         modules.transformer.train().requires_grad_(False)
+        self._before_adapter(modules.transformer)
         base_model = _base_model_load_receipt(self.model_cfg, modules.transformer)
         wrapped, self.lora = inject_h3_lora(
             modules.transformer,
@@ -516,15 +516,10 @@ class H3TrainingRuntime:
             ignored_parameters=self.lora.parameters,
             activation_checkpointing=bool(self.train_cfg["fsdp"]["activation_checkpointing"]),
             frozen_base_shard_size=self.train_cfg["fsdp"].get("frozen_base_shard_size"),
+            saved_attention_blocks=int(self.train_cfg["fsdp"].get("saved_attention_blocks", 0)),
         )
         self._weights_id = _base_weights_label(self.model_cfg)
-        if self.stage != "stage0p5":
-            from .weights import load_initial_weights
-
-            self._weights_id = load_initial_weights(
-                self.checkpoint_cfg["initialization"]["student"],
-                self.lora,
-            )
+        self._initialize_adapter()
         self.objective_seed = int(identity.objective_seed)
         optimizer_cfg = self.train_cfg["optimizer"]
         self.optimizer = FP32MasterAdamW(
@@ -545,17 +540,8 @@ class H3TrainingRuntime:
             return minimum + (1.0 - minimum) * 0.5 * (1.0 + math.cos(math.pi * progress))
 
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_scale)
-        self.ema = (
-            None
-            if self.stage == "stage2"
-            else H3ShardedEMA(
-                self.model,
-                decay=float(self.checkpoint_cfg["ema"]["decay"]),
-                device=self.device,
-                trainable_only=True,
-            )
-        )
-        self.reader = _reader(config, self.topology)
+        self.ema = self._make_ema()
+        self.reader = self._make_reader()
         self.silence, silence_profile = load_silence_latents(
             str(config["data"]["silence_latents_path"]),
             pixel_frames=153 if self.stage == "stage1" else 158,
@@ -566,7 +552,7 @@ class H3TrainingRuntime:
         torch.manual_seed(self.objective_seed)
         torch.cuda.manual_seed_all(self.objective_seed)
         self.core = self._make_core()
-        self.contract = _checkpoint_contract(
+        self.contract = self._make_contract(
             encoder_profile=self.reader.encoder_profile,
             silence_profile=silence_profile,
             base_model=base_model,
@@ -577,6 +563,48 @@ class H3TrainingRuntime:
         resume = str(self.checkpoint_cfg.get("resume_from") or "").strip()
         if resume and not defer_resume:
             self.load_checkpoint(resume)
+
+    def _before_adapter(self, transformer: Any) -> None:
+        """Prepare frozen base weights before attaching the trainable adapter."""
+        del transformer
+
+    def _initialize_adapter(self) -> None:
+        if self.stage != "stage0p5":
+            from .weights import load_initial_weights
+
+            self._weights_id = load_initial_weights(
+                self.checkpoint_cfg["initialization"]["student"], self.lora
+            )
+
+    def _make_reader(self) -> Any:
+        return _reader(self.config, self.topology)
+
+    def _make_contract(self, **kwargs: Any) -> CheckpointContract:
+        return _checkpoint_contract(**kwargs)
+
+    def _make_ema(self) -> Any:
+        from .ema import H3ShardedEMA
+
+        if self.stage == "stage2":
+            return None
+        return H3ShardedEMA(
+            self.model,
+            decay=float(self.checkpoint_cfg["ema"]["decay"]),
+            device=self.device,
+            trainable_only=True,
+        )
+
+    def _restore_ema(self, state: Any) -> None:
+        if state is None:
+            if self.stage != "stage2":
+                raise BackendContractError("H3 checkpoint is missing EMA state")
+            self.ema = None
+            return
+        if self.ema is None:
+            from .ema import H3ShardedEMA
+
+            self.ema = H3ShardedEMA(self.model, decay=float(state["decay"]), device=self.device)
+        self.ema.load_state_dict(state, self.model)
 
     def _make_core(self) -> Any:
         if self.stage == "stage1":
@@ -642,13 +670,18 @@ class H3TrainingRuntime:
         )
         with context:
             loss = self.core.forward_loss(batch, noise_seed=None)
-            if not bool(self.torch.isfinite(loss).item()):
-                raise FloatingPointError(f"H3 {self.stage} loss is non-finite")
+            self._check_finite(
+                bool(self.torch.isfinite(loss).item()), f"H3 {self.stage} loss is non-finite"
+            )
             (loss / (int(grad_accum) * get_sp_size())).backward()
         loss_value = float(loss.item())
         return MicrobatchResult(
             identity=identity, losses={str(self.train_cfg["objective"]): loss_value}
         )
+
+    def _check_finite(self, finite: bool, message: str) -> None:
+        if not finite:
+            raise FloatingPointError(message)
 
     def assert_sp_peer_identity(self, identity: BatchIdentity) -> None:
         del identity
@@ -817,18 +850,7 @@ class H3TrainingRuntime:
                 torch.load(root / "scheduler.pt", map_location="cpu", weights_only=True)
             )
             ema_state = torch.load(root / "ema.pt", map_location="cpu", weights_only=True)
-            if ema_state is None:
-                if self.stage != "stage2":
-                    raise BackendContractError("H3 checkpoint is missing EMA state")
-                self.ema = None
-            else:
-                if self.ema is None:
-                    from .ema import H3ShardedEMA
-
-                    self.ema = H3ShardedEMA(
-                        self.model, decay=float(ema_state["decay"]), device=self.device
-                    )
-                self.ema.load_state_dict(ema_state, self.model)
+            self._restore_ema(ema_state)
             for role, state in self.extra_roles.items():
                 saved = torch.load(root / f"{role}.pt", map_location="cpu", weights_only=True)
                 if (

@@ -59,6 +59,9 @@ jobs:
           with zipfile.ZipFile(wheels[0]) as archive:
               names = set(archive.namelist())
           required_wheel = {
+              "solarwm/renderer/render.py",
+              "solarwm/renderer/assets/encoder_contract.json",
+              "solarwm/renderer/assets/h3_silence_153_158_170.safetensors",
               "solarwm/backends/wan22/runtime/architectures/i2v_a14b.json",
               "solarwm/backends/wan22/runtime/architectures/ti2v_5b.json",
               "solarwm/backends/wan22/runtime/modeling/NOTICE.md",
@@ -70,6 +73,9 @@ jobs:
           with tarfile.open(sdists[0], "r:gz") as archive:
               names = {name.split("/", 1)[-1] for name in archive.getnames()}
           required_sdist = {
+              "docs/solar_renderer.md",
+              "configs/solar_renderer/control_lora.yaml",
+              "examples/solar_renderer/sem-highway_synthwave/prompt.txt",
               "CONTRIBUTING.md",
               "SECURITY.md",
               "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
@@ -81,3 +87,20 @@ jobs:
           python -m solarwm --version
           python -m solarwm config routes
           popd
+
+  renderer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e '.[renderer]' pytest
+      - run: pytest -q tests/renderer

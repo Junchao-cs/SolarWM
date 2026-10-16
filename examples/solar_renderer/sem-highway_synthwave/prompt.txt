@@ -1,0 +1,19 @@
+subject_definitions:
+<Video 1> is a semantic segmentation of the scene, one flat colour per class (road, sidewalk, building, vegetation, vehicle, pedestrian, sky and so on), frame by frame, from the same camera as the target video.
+<Video 2> is the first frame of [Shot 1], held still.
+
+summary:
+[keyframe completion + reference generation] The target video begins from <Video 2> and follows the frame-by-frame structure and motion of <Video 1>. A retro synthwave highway run: a neon-trimmed coupe overtakes a glowing semi-truck, flies under a neon gantry and overpass at dusk, and slides back into its lane.
+
+retention_analysis:
+<Video 1> (frame-by-frame layout of every class and camera): attribute_transfer - every region keeps its class, outline and place; materials, colours and lighting are not given by <Video 1>; the flat class colours are not shown.
+<Video 2> ([Shot 1] first frame): fully_preserved - the composition, subjects, materials, colours and lighting of <Video 2> are the target video's first frame.
+
+detailed_description:
+The target video is a stylised synthwave animation in the look of an eighties retro-futuristic music video, with a magenta-to-violet sunset gradient sky, a huge striped setting sun on the horizon, neon pink and cyan edge lighting, glossy reflective surfaces and a light film grain. [Shot 1] The shot begins from <Video 2>. The camera trails a few metres behind and above a black wedge-shaped sports coupe with a glowing cyan light strip across its tail, in the right lane of a six-lane divided highway whose lane lines glow hot pink. Ahead sits the back of a chrome semi-trailer outlined in purple neon, pulled by a tractor with a glowing grille. After half a second the coupe glides left into the middle lane, the camera tilting with it, and begins to close on the truck. The trailer's mirror-like side slides by on the right, reflecting the sunset, then its glowing wheels and the cab with chrome stacks, passing within a couple of metres. Midway, a gantry with two glowing signs in retro lettering sweeps overhead. Further up the road, tail lights of an SUV and a sedan streak away in the fast lane, with a hatchback, a box truck and a van glowing ahead. Across a dark median lined with tall lamp posts topped by pink light bars, oncoming cars and a coach race past as streaks of white light. Near the end the coupe flashes under a concrete overpass trimmed with neon tubes, while a glowing SUV and a delivery truck cross above, their light trails painting streaks along the bridge railing. Clear of the truck, the coupe slides back into the right lane toward the setting sun. The coupe stays planted through every move, rocking slightly over expansion joints, and the camera follows with a slight lag so each lane change feels smooth, heavy and rhythmic, like a slow camera move in a music video. Guard rails gleam with reflected pink light, palm-like trees and stylised pines stand as black silhouettes, utility poles and their wires cut thin lines across the gradient sky, and low warehouses with glowing windows and purple hills fade toward a wireframe-like horizon.
+
+overall_soundscape:
+Smooth tyre roar and wind with a punchy engine note as the coupe overtakes, a deep whoosh past the truck and a hollow echo under the overpass.
+
+non_diegetic_music:
+N/A
