@@ -191,6 +191,9 @@ torchrun --standalone --nproc-per-node=8 \
 ```
 
 The [quickstart](docs/quickstart.md) covers H3 setup, training, and inference.
+For native stereo audio output, enable `validation.generate_audio: true` in the
+fixed-length Stage0.5 inference config; see the [H3 audio inference guide](docs/backends/minimax-h3-audio-inference.md)
+and the runnable `scripts/run_h3_audio_inference.sh` wrapper.
 For Stage1/Stage2 training and [full-length inference](docs/backends/minimax-h3.md#full-length-stage2-inference),
 see the [H3 guide](docs/backends/minimax-h3.md). Other models have their own
 backend guides.

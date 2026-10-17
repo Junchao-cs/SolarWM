@@ -87,6 +87,9 @@ validation:
   latent_frames: 47
   fps: 24
   num_inference_steps: 30
+  # Set true to jointly sample H3's native stereo AudioVAE latents and write
+  # generated.wav plus generated-with-audio.mp4 alongside generated.mp4.
+  generate_audio: false
   max_relative_translation: 20.0
   max_camera_absolute_value: 20.0
   smoke_step: 20

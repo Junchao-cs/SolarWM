@@ -1073,10 +1073,12 @@ class H3TrainingRuntime:
                 output_directories: list[str] = []
                 ordered_manifest_digests: list[str] = []
                 conditioners = None
+                generate_audio = bool(self.config["validation"].get("generate_audio", False))
                 try:
                     for wave_index, batch, case in fixed_cases:
-                        generated_latents = _collective_call(
-                            lambda batch=batch, case=case: self.core.generate(
+                        generate = self.core.generate_joint if generate_audio else self.core.generate
+                        generated = _collective_call(
+                            lambda batch=batch, case=case, generate=generate: generate(
                                 batch,
                                 noise_seed=case.noise_seed,
                                 num_inference_steps=int(
@@ -1087,6 +1089,10 @@ class H3TrainingRuntime:
                             topology=self.topology,
                             label=f"validation {name} wave {wave_index} generation",
                         )
+                        if generate_audio:
+                            generated_latents, generated_audio_latents = generated
+                        else:
+                            generated_latents, generated_audio_latents = generated, None
 
                         output_error = ""
                         if get_sp_rank() == 0:
@@ -1126,7 +1132,7 @@ class H3TrainingRuntime:
                                         device=self.device,
                                         qwen=False,
                                         video_vae=True,
-                                        audio_vae=False,
+                                        audio_vae=generate_audio,
                                         schedulers=False,
                                     )
                                 packaged = package_generated(
@@ -1139,6 +1145,8 @@ class H3TrainingRuntime:
                                     ),
                                     reference_latents=batch.target_latents,
                                     sample_solver=generation["sample_solver"],
+                                    audio_latents=generated_audio_latents,
+                                    audio_vae=conditioners.audio_vae,
                                 )
 
                                 class CachedAdapter:
@@ -1594,10 +1602,14 @@ def run_inference(config: Mapping[str, Any]) -> int:
     else:
         core = H3Stage0p5Core(model, silence, device)
     conditioners = None
+    generate_audio = bool(config["validation"].get("generate_audio", False))
     comparison_destination = Path(str(config["runtime"]["output_dir"])) / "inference"
     for wave_index, batch, case in fixed_cases:
-        generated_latents = _collective_call(
-            lambda batch=batch, case=case: core.generate(
+        if generate_audio and stage != "stage0p5":
+            raise BackendContractError("validation.generate_audio is only supported for H3 Stage0.5")
+        generate = core.generate_joint if generate_audio else core.generate
+        generated = _collective_call(
+            lambda batch=batch, case=case, generate=generate: generate(
                 batch,
                 noise_seed=case.noise_seed,
                 num_inference_steps=int(config["validation"]["num_inference_steps"]),
@@ -1606,6 +1618,10 @@ def run_inference(config: Mapping[str, Any]) -> int:
             topology=topology,
             label=f"inference wave {wave_index} generation",
         )
+        if generate_audio:
+            generated_latents, generated_audio_latents = generated
+        else:
+            generated_latents, generated_audio_latents = generated, None
         output_error = ""
         if get_sp_rank() == 0:
             try:
@@ -1615,7 +1631,7 @@ def run_inference(config: Mapping[str, Any]) -> int:
                         device=device,
                         qwen=False,
                         video_vae=True,
-                        audio_vae=False,
+                        audio_vae=generate_audio,
                         schedulers=False,
                     )
                 packaged = package_generated(
@@ -1626,6 +1642,8 @@ def run_inference(config: Mapping[str, Any]) -> int:
                     num_inference_steps=int(config["validation"]["num_inference_steps"]),
                     reference_latents=batch.target_latents,
                     sample_solver=str(case.metadata["sample_solver"]),
+                    audio_latents=generated_audio_latents,
+                    audio_vae=conditioners.audio_vae,
                 )
 
                 class CachedAdapter:
