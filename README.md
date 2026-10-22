@@ -59,12 +59,20 @@ and long-horizon inference.
 
 ## News
 
+- **October 22, 2026:** We release **SolarWM-H3 Realtime** ([Blog](https://solarx-team.github.io/SolarWM-H3-Realtime/)), enabling **low-latency interactive video generation** from an image and a prompt, with real-time camera control. [Code](src/solarwm/realtime_interaction).
 - **October 16, 2026:** We release [H3 Streaming VAE Decoder](https://github.com/SolarX-Team/H3-Streaming-VAE-Decoder), enabling **low-latency streaming video decoding** that produces frames as latents arrive. It supports both the official MiniMax-H3 VAE and NVIDIA’s distilled StreamRender-H3 decoder.
 - **October 16, 2026:** [SolarRenderer](https://github.com/Enderfga/SolarRenderer) brings four-step, structure-conditioned video rendering to SolarWM, with bidirectional and block-causal training and inference on MiniMax-H3. Follow the [SolarRenderer tutorial](docs/solar_renderer.md) to render from a structure video, an optional first frame, and a prompt.
 - **September 13, 2026:** We release **SolarWM-H3**, the first MiniMax-H3-based world model for streaming, few-step interaction. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for all three stages: Stage0.5, Stage1, and Stage2. Get started with the [H3 guide](docs/backends/minimax-h3.md).
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
   stages, and bidirectional weights for SolarWM-14B, SolarWM-LTX, and SolarWM-H3.
+
+## Realtime interaction deployment
+
+Deploy SolarWM-H3 as an interactive web demo with accelerated DiT inference and
+streaming VAE decoding. Upload an image, enter a prompt, and control the camera
+as the video is generated. See the
+[deployment guide](src/solarwm/realtime_interaction/README.md) to get started.
 
 ## Training progression
 

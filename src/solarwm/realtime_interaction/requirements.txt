@@ -1,0 +1,18 @@
+# Pinned integration runtime. Install CUDA PyTorch from its official index.
+torch==2.10.0
+triton==3.6.0
+diffusers==0.40.0
+transformers==5.12.1
+peft==0.20.0
+numpy==1.26.4
+safetensors==0.8.0
+einops==0.8.2
+Pillow==11.3.0
+accelerate==1.14.0
+imageio-ffmpeg==0.6.0
+# Native DiT retains FlashAttention-2; StreamRender adds the separate CuTe path.
+flash-attn==2.8.3
+flash-attn-4[cu13]==4.0.0b35
+quack-kernels==0.6.5
+nvidia-cutlass-dsl==4.7.0
+h3-streaming-vae @ git+https://github.com/SolarX-Team/H3-Streaming-VAE-Decoder.git@a7c61a6e02bef8539178a17b6e150a775b3a0ebb

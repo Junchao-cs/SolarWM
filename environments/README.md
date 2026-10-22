@@ -9,7 +9,13 @@ of the reproduced result.
 | Wan 2.2 | 3.10 | 2.5.1 / 12.4 | FlashAttention 2.8.3, Diffusers 0.38.0, Transformers 5.12.1 |
 | LTX-2.5 | 3.12 | 2.9.1 / 12.8 | `ltx-core`, `ltx-pipelines`, and `ltx-trainer` 1.2.0; Transformers 5.14.1 |
 | MiniMax-H3 | 3.10 | 2.6.0 / 12.4 | FlashAttention 2.8.3, PEFT 0.20.0, Transformers 5.12.1, Diffusers 0.40.0 |
+| H3 Realtime deployment | 3.12 | 2.10.0 / 13.0 | Triton 3.6.0; use the deployment guide's pinned requirements |
 | SolarRenderer | 3.10 | 2.8.0 / 12.8 | FlashAttention 2.7.4.post1, PEFT 0.20.0, Transformers 5.14.1, Diffusers 0.40.0 |
+
+H3 Realtime deployment uses a separate environment and currently requires eight
+Blackwell GPUs. Follow the
+[realtime deployment guide](../src/solarwm/realtime_interaction/README.md)
+for its installation order, model downloads, and web demo commands.
 
 SolarRenderer uses its own environment. Follow the
 [SolarRenderer tutorial](../docs/solar_renderer.md#install) for installation,

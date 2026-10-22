@@ -80,13 +80,19 @@ solarwm = "solarwm.cli:main"
 solar-renderer = "solarwm.renderer.render:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
+# Keep example assets in one source location; wheels install them as resources.
+package-dir = {"solarwm" = "src/solarwm", "solarwm.examples" = "examples/solarwm"}
 
 [tool.setuptools.package-data]
 "solarwm.renderer" = ["assets/*.json", "assets/*.safetensors"]
+"solarwm.examples" = ["*/first.png", "*/prompt.txt"]
+"solarwm.realtime_interaction" = [
+  "README.md", "requirements.txt", "*.example.json", "launch.sh",
+]
+"solarwm.realtime_interaction.solarwm_web" = [
+  "static/*.html", "static/*.js", "static/*.png",
+  "acceleration/*.json", "media/*.c", "vae/tables/*.json", "vae/tables/*.pt",
+]
 "solarwm.backends.wan22.runtime.architectures" = ["*.json"]
 "solarwm.backends.wan22.runtime.modeling" = ["NOTICE.md"]
 

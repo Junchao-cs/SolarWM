@@ -1,0 +1,16 @@
+{
+  "model_config": "./model-config.json",
+  "silence": "./models/h3_silence_153_158_170.safetensors",
+  "scenes": "./scenes.json",
+  "state_directory": "./runtime",
+  "cache_directory": "./compiler-cache",
+  "host": "127.0.0.1",
+  "port": 8900,
+  "media_port": 8901,
+  "acceleration": "compile_graph",
+  "graph_capacity": 2,
+  "vae_backend": "current",
+  "vae_ranks": 8,
+  "streamrender_weights": "./models/causal_vit24_step6000.safetensors",
+  "ffmpeg": "ffmpeg"
+}

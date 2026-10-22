@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+*.local.json
+cache/
+caches/
+outputs/
+logs/
+runs/
+checkpoints/
+*.safetensors
+*.cubin
+*.ptx
+# Required fixed calibration assets; override the repository-wide *.pt rule.
+!/solarwm_web/vae/tables/first_window.pt
+!/solarwm_web/vae/tables/steady.pt

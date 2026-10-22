@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SolarWM-H3</title>
+  <style>
+    :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#012140;background:#fff;font-synthesis:none;--solar-navy:#012140;--solar-gold:#8b6b3f;--solar-sand:#d0c5a6;--solar-cream:#f8f6f0}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:#fff}
+    [hidden]{display:none!important}
+    button,select{font:inherit}
+    .shell{width:min(1380px,calc(100% - 48px));margin:0 auto;padding:22px 0 36px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:12px;min-width:0}
+    .brand h1{font-size:24px;line-height:1.1;letter-spacing:-.035em;margin:0;color:var(--solar-navy)}
+    .brand h1::before{content:"";display:inline-block;width:11px;height:11px;margin-right:10px;border-radius:50%;background:var(--solar-sand);box-shadow:0 3px 0 var(--solar-gold);vertical-align:3px}
+    #stateBadge{max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border:1px solid #e7dcc5;border-radius:999px;background:#fbf8f1;color:#765834;font-size:11px;font-weight:500}
+    .workspace{display:grid;grid-template-columns:minmax(0,1fr) 314px;align-items:start;gap:18px}
+    .side-panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+    .viewer,.actions,.controls,.details{background:#fff;border:1px solid #e9e5db;box-shadow:0 16px 48px #0121400c;border-radius:24px}
+    .viewer{padding:12px}
+    .preview{position:relative;overflow:hidden;border-radius:17px;background:linear-gradient(135deg,#f6f1e7,#e7eef1)}
+    #screen,#live,#replay{display:block;width:100%;aspect-ratio:1344/768;object-fit:contain;background:transparent}
+    #fpsOverlay{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);pointer-events:none}
+    .live-pill{position:absolute;left:16px;top:16px;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);padding:9px 12px;border-radius:12px;background:#fffffff0;box-shadow:0 4px 20px #01214029;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;backdrop-filter:blur(12px)}
+    .live-pill::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;background:var(--solar-gold);box-shadow:0 0 0 4px #8b6b3f29}
+    .viewer-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;min-height:54px;padding:8px 5px 0}
+    #compactStatus{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+    .resolution{display:flex;align-items:center;gap:8px;color:#667583;font-size:13px;white-space:nowrap}
+    select{appearance:none;border:1px solid #dfd5c1;border-radius:11px;background:#fcfaf5;color:var(--solar-navy);padding:9px 30px 9px 11px;cursor:pointer}
+    .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:15px}
+    .actions button,.actions a{font-size:13px;font-weight:600}
+    .scene-prompt{padding:15px;border:1px solid #e9e5db;border-radius:18px;background:#fff}
+    .scene-prompt label{display:block;font-size:12px;color:#697580;margin-bottom:8px}
+    #scenePrompt{width:100%;resize:vertical;min-height:94px;max-height:220px;border:0;background:#faf9f6;border-radius:9px;padding:10px;font-family:inherit;font-size:12px;color:#445464;line-height:1.5}
+    .scene-note{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:11px;color:#8b6b3f}
+    #returnDefault{padding:5px 8px;font-size:11px;font-weight:500;white-space:nowrap}
+    .gallery{margin-top:22px;border-top:1px solid #eee9df;padding-top:18px}
+    .gallery-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .gallery-head h2{font-size:14px;margin:0;font-weight:600}
+    #galleryCount,#galleryPage{font-size:12px;color:#7c8790}
+    #gallerySearch{margin-left:auto;width:min(320px,100%);border:1px solid #e6e0d4;border-radius:10px;padding:9px 12px;font-size:12px;color:var(--solar-navy);background:#fff}
+    .gallery-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+    .scene-card{padding:0;overflow:hidden;text-align:left;border-radius:12px;background:#fff;border:1px solid #e9e5db;font-weight:500}
+    .scene-card[aria-pressed=true]{border:2px solid var(--solar-gold);box-shadow:0 0 0 2px #d0c5a644}
+    .scene-card img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#f8f6f0}
+    .scene-card span{display:block;padding:8px 9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#596773}
+    .gallery-pages{display:flex;justify-content:center;align-items:center;gap:15px;margin-top:16px}
+    .gallery-pages button{padding:7px 13px;font-size:12px;font-weight:500}
+    .scene-upload{margin:0 0 18px;padding:14px 16px;border:1px solid #e6e0d4;border-radius:12px;background:#fdfcf9}
+    .scene-upload summary{font-size:14px;cursor:pointer;color:var(--solar-navy)}
+    #uploadSceneForm{display:grid;gap:10px;margin-top:14px}
+    #uploadSceneForm label{font-size:12px;color:#52616f;display:grid;gap:6px}
+    #uploadPrompt{width:100%;box-sizing:border-box;min-height:90px;resize:vertical;font-family:inherit;font-size:13px;line-height:1.5;padding:10px;border:1px solid #e6e0d4;border-radius:9px;background:#fff}
+    .upload-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .upload-actions button{font-size:13px;padding:9px 16px}
+    #uploadMessage{font-size:12px;color:#52616f;overflow-wrap:anywhere}
+    @media(max-width:920px){.gallery-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    @media(max-width:640px){.gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    button,.button{border:1px solid #d8c9aa;border-radius:12px;background:#f8f6f0;color:var(--solar-navy);padding:11px 12px;cursor:pointer;text-decoration:none;font-weight:700;transition:transform .16s,background .16s,box-shadow .16s}
+    button:hover,.button:hover{background:#eee8d9;transform:translateY(-1px)}
+    button:active,.button:active{transform:translateY(0)}
+    button:disabled,select:disabled{opacity:.48;cursor:not-allowed;transform:none}
+    button:focus-visible,select:focus-visible,.button:focus-visible,.details summary:focus-visible{outline:2px solid var(--solar-gold);outline-offset:3px}
+    #start{grid-column:1/-1;background:var(--solar-navy);border-color:var(--solar-navy);color:#fff;box-shadow:0 8px 18px #01214030}
+    .prepare-overlay{position:absolute;inset:0;z-index:20;display:flex;justify-content:center;align-items:flex-end;background:var(--solar-cream);color:var(--solar-navy);text-align:left;padding:20px}
+    .prepare-teaser{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;pointer-events:none}
+    .prepare-card{position:relative;display:flex;align-items:center;gap:12px;max-width:100%;padding:12px 16px;border:1px solid #ffffffcc;border-radius:14px;background:#fffffff2;box-shadow:0 6px 28px #01214024}
+    .prepare-copy{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
+    .prepare-overlay[hidden]{display:none}.prepare-overlay strong{font-size:14px;font-weight:600}.prepare-overlay small{font-size:12px;color:#667583}.prepare-spinner{height:22px;width:22px;flex:none;border:2px solid #e9e2cf;border-top-color:var(--solar-navy);border-radius:50%;animation:prepare-spin 1s linear infinite}.prepare-overlay button{flex:none;font-size:12px;padding:7px 10px}
+    @media(max-width:640px){.prepare-overlay{padding:8px}.prepare-card{gap:8px;padding:9px 10px;border-radius:10px}.prepare-overlay strong{font-size:12px}.prepare-overlay small{font-size:10px}.prepare-overlay button{font-size:11px;padding:6px 8px}}
+    @keyframes prepare-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.prepare-spinner{animation:none}}
+    #start:hover{background:#1b405f}
+    #stop{grid-column:1/-1;border-color:#d8c9aa;background:#fbf6eb;color:#765834}
+    #stop:hover{background:#f1e9d8}
+    #download{grid-column:1/-1;text-align:center}
+    .controls{padding:18px 16px 20px}
+    .section-title{display:flex;align-items:baseline;gap:10px;margin-bottom:16px}
+    .section-title h2{font-size:16px;margin:0;letter-spacing:-.02em}
+    .section-title span{font-size:12px;color:#7c8790}
+    #keys{width:100%;margin:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:44px 44px 12px 44px 44px;gap:5px}
+    #keys::before{content:"";grid-column:1/-1;grid-row:3;align-self:center;border-top:1px solid #e9e5db}
+    #keys .key{min-width:0;padding:3px;display:flex;flex-direction:row;gap:5px;justify-content:center;align-items:center;touch-action:none;background:#f8f6f0;border-color:#d8c9aa;color:var(--solar-navy);font-size:14px;line-height:1.1;box-shadow:0 3px 0 #e8dfca}
+    #keys .key::after{display:inline;font-size:11px;color:#7c8790;font-weight:500;white-space:nowrap}
+    #keys .key.down{background:#eee6d4;border-color:var(--solar-gold);box-shadow:0 1px 0 var(--solar-gold);transform:translateY(2px)}
+    #keys .key:nth-child(1){grid-column:2;grid-row:1}#keys .key:nth-child(1)::after{content:"前进"}
+    #keys .key:nth-child(2){grid-column:1;grid-row:2}#keys .key:nth-child(2)::after{content:"左移"}
+    #keys .key:nth-child(3){grid-column:2;grid-row:2}#keys .key:nth-child(3)::after{content:"后退"}
+    #keys .key:nth-child(4){grid-column:3;grid-row:2}#keys .key:nth-child(4)::after{content:"右移"}
+    #keys .key:nth-child(5){grid-column:2;grid-row:4}#keys .key:nth-child(5)::after{content:"抬头"}
+    #keys .key:nth-child(6){grid-column:1;grid-row:5}#keys .key:nth-child(6)::after{content:"左转"}
+    #keys .key:nth-child(7){grid-column:2;grid-row:5}#keys .key:nth-child(7)::after{content:"低头"}
+    #keys .key:nth-child(8){grid-column:3;grid-row:5}#keys .key:nth-child(8)::after{content:"右转"}
+    .details{padding:0 18px;color:#667583;font-size:12px;line-height:1.5}
+    .details summary{padding:14px 0;cursor:pointer;font-weight:700;color:var(--solar-navy)}
+    .details summary:focus:not(:focus-visible){outline:none}
+    .details p{margin:0 0 13px}
+    #metrics{margin:0 0 8px;font-variant-numeric:tabular-nums}
+    @media(max-width:920px){.workspace{grid-template-columns:1fr}.side-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}.details{grid-column:1/-1}}
+    @media(max-width:640px){.shell{width:calc(100% - 20px);padding-top:12px}.brand h1{font-size:21px}.viewer{padding:7px;border-radius:18px}.preview{border-radius:13px}.live-pill{left:8px;top:8px;padding:7px 9px;font-size:11px}.viewer-foot{align-items:flex-start;flex-direction:column;gap:7px;padding:10px 4px 4px}.side-panel{display:flex;align-items:stretch}.actions{padding:10px}.actions button{padding:11px 9px}.controls{padding:14px 10px 16px}}
+    .roam-timer{position:absolute;right:16px;top:16px;padding:9px 12px;border-radius:12px;background:#fffffff0;color:var(--solar-navy);box-shadow:0 4px 20px #01214015;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;backdrop-filter:blur(12px)}
+    #keys{grid-template-rows:40px 40px 12px 40px 40px}
+    #keys .key::after{content:attr(data-label)!important}
+    #keys .key[data-key=q]{grid-column:1;grid-row:1}
+    #keys .key[data-key=w]{grid-column:2;grid-row:1}
+    #keys .key[data-key=e]{grid-column:3;grid-row:1}
+    #keys .key[data-key=a]{grid-column:1;grid-row:2}
+    #keys .key[data-key=s]{grid-column:2;grid-row:2}
+    #keys .key[data-key=d]{grid-column:3;grid-row:2}
+    #keys .key[data-key=i]{grid-column:2;grid-row:4}
+    #keys .key[data-key=j]{grid-column:1;grid-row:5}
+    #keys .key[data-key=k]{grid-column:2;grid-row:5}
+    #keys .key[data-key=l]{grid-column:3;grid-row:5}
+    .speed-controls{margin-top:20px;display:grid;gap:9px}
+    .speed-controls label{font-size:12px;display:flex;justify-content:space-between;color:#667583}
+    .speed-controls output{color:var(--solar-navy);font-variant-numeric:tabular-nums}
+    .speed-controls input{width:100%;margin:0 0 8px;accent-color:var(--solar-gold);cursor:pointer}
+    .control-foot{display:flex;align-items:center;justify-content:space-between;gap:6px}
+    .control-foot span,#speedState{font-size:10px;color:#7c8790}
+    #allIdle{font-size:11px;font-weight:500;padding:6px 8px;border-radius:8px;white-space:nowrap}
+    @media(max-width:640px){.roam-timer{right:8px;top:8px;padding:7px 9px;font-size:10px}.live-pill{max-width:calc(100% - 125px);font-size:10px}}
+  </style>
+<script src="/runtime-config.js"></script>
+</head>
+<body><div class="shell">
+  <header class="top"><div class="brand"><h1>SolarWM-H3</h1></div><span id="badge" hidden></span><span id="stateBadge">连接中</span></header>
+  <main class="workspace">
+    <section class="viewer" aria-label="实时画面">
+      <div class="preview">
+        <div id="prepareOverlay" class="prepare-overlay" role="status" aria-live="polite" hidden>
+          <!-- Original unbranded landscape; legacy asset route retained for no-restart rollout. Display-only, never a model input. -->
+          <img class="prepare-teaser" src="/solar_teaser.png?v=solarwm-release-v1" alt="" aria-hidden="true" decoding="async">
+          <div class="prepare-card">
+            <span class="prepare-spinner" aria-hidden="true"></span>
+            <div class="prepare-copy">
+              <strong id="prepareTitle">正在准备场景</strong>
+              <small id="prepareEstimate">正在估算等待时间…</small>
+            </div>
+            <button id="prepareCancel" type="button">取消准备</button>
+            <button id="prepareRetry" type="button" hidden>重新准备</button>
+          </div>
+        </div>
+        <img id="screen" src="/solar_teaser.png" alt="SolarWM Teaser">
+        <video id="live" muted autoplay playsinline preload="none" hidden></video>
+        <video id="replay" controls playsinline preload="none" poster="/first.png" hidden></video>
+        <div id="fpsOverlay" aria-hidden="true"></div>
+        <div id="compactFps" class="live-pill">准备中</div>
+        <div id="roamTimer" class="roam-timer" title="已显示画面的时间，按原始 16 FPS 时间轴计算">漫游 00:00</div>
+      </div>
+      <div class="viewer-foot"><span id="compactStatus">等待模型就绪</span><label class="resolution" for="previewResolution">画质 <select id="previewResolution"><option value="full" selected>原始 1344×768</option><option value="half">流畅 672×384</option></select></label></div>
+    </section>
+    <aside class="side-panel" aria-label="操作面板">
+    <section class="scene-prompt" id="scenePromptPanel" hidden><label for="scenePrompt" id="sceneLabel">所选首帧 · Prompt</label><textarea id="scenePrompt" readonly aria-label="首帧对应的 Prompt"></textarea><div class="scene-note"><span id="sceneNote">选择后自动准备</span><button id="returnDefault">返回默认场景</button></div></section>
+    <div class="actions"><button id="start" disabled>开始生成</button><button id="pause" disabled>暂停</button><button id="resume" disabled>继续</button><button id="stop" disabled>结束生成</button><a class="button" id="download" href="/video" hidden>下载视频</a></div>
+    <section class="controls" aria-label="镜头控制"><div class="section-title"><h2>镜头控制</h2><span>键盘或点按</span></div><div id="keys"></div>
+      <div class="speed-controls">
+        <label for="moveSpeed">移动速度 <output id="moveSpeedValue">1.0×</output></label>
+        <input id="moveSpeed" type="range" min="0" max="10" step="0.1" value="1" aria-label="移动速度">
+        <label for="turnSpeed">转向速度 <output id="turnSpeedValue">1.0×</output></label>
+        <input id="turnSpeed" type="range" min="0" max="3" step="0.1" value="1" aria-label="转向速度">
+        <div class="control-foot"><span>↑↓←→ 移动 · 空格升 · Shift 降</span><button id="allIdle" type="button">松开全部</button></div>
+        <span id="speedState" role="status">下一个生成块生效</span>
+      </div></section>
+    <details class="details"><summary>运行详情</summary><div id="metrics">等待模型就绪</div><p id="previewState">等待预览</p><p>可持续生成，结束后可下载视频。</p></details>
+    </aside>
+  </main>
+  <section class="gallery" aria-label="首帧图片库">
+    <details class="scene-upload"><summary>Your image + prompt</summary>
+      <form id="uploadSceneForm">
+        <label>Image · PNG / JPEG / WebP, up to 8 MiB<input id="uploadImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <label>Prompt<textarea id="uploadPrompt" maxlength="4000" placeholder="Describe the scene…" required></textarea></label>
+        <div class="upload-actions"><button type="submit">Prepare scene</button><button id="useSelectedImage" type="button">Use selected image</button><span id="uploadMessage" role="status"></span></div>
+      </form>
+    </details>
+    <div class="gallery-head"><h2>选择首帧</h2><span id="galleryCount">加载中</span><input id="gallerySearch" type="search" placeholder="搜索场景" aria-label="搜索场景"></div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <div class="gallery-pages"><button id="galleryPrev">上一页</button><span id="galleryPage"></span><button id="galleryNext">下一页</button></div>
+  </section>
+</div>
+<script src="/live_preview.js"></script>
+<script src="/gallery.js"></script>
+<script>
+  (()=>{
+    const compactFps=document.getElementById('compactFps');
+    const compactStatus=document.getElementById('compactStatus');
+    function update(){
+      if(typeof lastStatus==='undefined'||!lastStatus)return;
+      const s=lastStatus;
+      const badge=document.getElementById('stateBadge');
+      badge.title=s.error||'';
+      badge.textContent=s.error?'异常':s.scene_preparing?'准备首帧':s.start_pending?'启动中':!s.ready?'准备中':s.paused?'已暂停':s.active&&!s.frames?'准备首块':s.active?'生成中':'已就绪';
+      if(s.scene_preparing){compactStatus.textContent='正在编码首帧和 Prompt';compactFps.hidden=true;return}
+      if(s.scene_error){compactStatus.textContent='场景准备失败：'+s.scene_error;return}
+      if(window.gallerySelection&&window.galleryPreview){compactStatus.textContent='首帧预览 · 原图 '+window.gallerySelection.width+' × '+window.gallerySelection.height;compactFps.hidden=true;return}
+      if(s.error){compactStatus.textContent='生成中断 · 查看运行详情';compactFps.textContent='已中断';return}
+      if(!s.ready){compactStatus.textContent='启动预热 '+(s.warmup_chunk??0)+'/'+(s.warmup_total??12)+' · 尚未生成画面';compactFps.textContent='预热中';return}
+      if(s.active&&!s.frames){compactStatus.textContent='正在生成首块';compactFps.hidden=true;return}
+      compactStatus.textContent=s.active?(s.stop_requested?'正在结束 · ':'第 '+s.chunk+' 块 · ')+s.frames+' 帧':s.video_ready?'已完成 · '+s.frames+' 帧':'已就绪 · 可以开始';
+      const shown=typeof shownFps==='function'?shownFps(performance.now()):0;
+      const generated=typeof chunkGeneratedFps==='function'?chunkGeneratedFps(performance.now()):0;
+      const generatedLabel=generated>0?generated.toFixed(1):'—';
+      compactFps.textContent=s.video_ready?'可回放':s.active?(s.paused?'已暂停':'生成 '+generatedLabel)+' · 显示 '+shown.toFixed(1)+' FPS':'实时预览';
+      compactFps.hidden=!!s.video_ready;
+    }
+    setInterval(update,500);update();
+  })();
+</script>
+<script src="/preparation_eta.js"></script>
+<script src="/scene_ready.js"></script>
+</body></html>

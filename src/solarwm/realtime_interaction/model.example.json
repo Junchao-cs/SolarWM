@@ -1,0 +1,53 @@
+{
+  "model": {
+    "family": "minimax_h3",
+    "architecture": "minimax-h3-33b",
+    "checkpoint_path": "/path/to/models/SolarWM-h3-33B-base",
+    "transformer_subfolder": "transformer",
+    "transformer_device_map": null,
+    "training_mode": "lora",
+    "torch_dtype": "bfloat16",
+    "local_files_only": true,
+    "load_conditioners": false,
+    "camera_attention_mode": "fused_prope",
+    "attention_head_dim": 128,
+    "camera_prope_head_dim_start": 96,
+    "camera_prope_head_dim_end": 128,
+    "camera_translation_transform": "logd4",
+    "camera_intrinsics_mode": "wan_fixed",
+    "latent_channels": 24,
+    "latent_height": 48,
+    "latent_width": 84,
+    "rows_per_latent": 1008,
+    "num_frames_per_block": 5,
+    "max_prior_clean_chunks": 5,
+    "attention_backend": "flex",
+    "adapter": {
+      "type": "lora",
+      "target": "block_qkvo_ffn",
+      "rank": 384,
+      "alpha": 384,
+      "dropout": 0.0,
+      "bias": "none",
+      "dtype": "bfloat16",
+      "expected_target_linear_modules": 312,
+      "expected_trainable_parameters": 2075394048
+    },
+    "student_rope_mode": "sliding_local",
+    "score_rope_mode": "native_absolute"
+  },
+  "distributed": {
+    "world_size": 8,
+    "sequence_parallel_size": 8,
+    "context_parallel_size": 1,
+    "sp_peers_share_sample": true,
+    "sp_peers_share_rng": true
+  },
+  "checkpoint": {
+    "resume_from": "/path/to/models/SolarWM-h3-33B-sgf-stage2-158f-fix",
+    "weight_source": "ema"
+  },
+  "inference": {
+    "expected_step": 3900
+  }
+}

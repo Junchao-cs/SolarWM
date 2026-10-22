@@ -98,6 +98,16 @@ def build_parser() -> argparse.ArgumentParser:
     environment_commands = environment.add_subparsers(dest="environment_command", required=True)
     environment_commands.add_parser("probe")
 
+    publish = commands.add_parser(
+        "publish-validation", help="publish completed node-local validation outputs to GCS"
+    )
+    publish.add_argument("--run-dir", type=Path, required=True)
+    publish.add_argument("--destination", required=True, help="gs:// bucket and unique run prefix")
+    publish.add_argument("--node-rank", type=int, required=True)
+    publish.add_argument("--num-nodes", type=int, required=True)
+    publish.add_argument("--watch", action="store_true", help="keep retrying until interrupted")
+    publish.add_argument("--poll-seconds", type=float, default=30.0)
+
     return parser
 
 
@@ -350,6 +360,41 @@ def _environment_command(args: argparse.Namespace) -> int:
     raise SolarWMError(f"unhandled environment command {args.environment_command!r}")
 
 
+def _publish_validation_command(args: argparse.Namespace) -> int:
+    import time
+
+    from solarwm.runtime.gcs_upload import GCSStore, PublicationError
+    from solarwm.runtime.validation_publish import ValidationPublisher
+
+    if not math.isfinite(args.poll_seconds) or args.poll_seconds <= 0:
+        raise PublicationError("invalid_poll_interval")
+    previous = None
+    try:
+        publisher = ValidationPublisher(
+            args.run_dir,
+            GCSStore(args.destination),
+            node_rank=args.node_rank,
+            num_nodes=args.num_nodes,
+        )
+        while True:
+            report = publisher.scan()
+            # Report changes, never repeat unchanged snapshots on every poll.
+            if report != previous:
+                _write_json(report)
+                sys.stdout.flush()
+                previous = report
+            if not args.watch:
+                return 2 if report["errors"] else int(bool(report["pending"] or report["partial"]))
+            time.sleep(args.poll_seconds)
+    except KeyboardInterrupt:
+        return 130
+    except PublicationError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError):
+        # Exception text may contain local paths, URLs, or transport response bodies.
+        raise PublicationError("publication_io_or_schema_error") from None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -361,6 +406,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _data_command(args)
         if args.command == "environment":
             return _environment_command(args)
+        if args.command == "publish-validation":
+            return _publish_validation_command(args)
         raise SolarWMError(f"unhandled command {args.command!r}")
     except (SolarWMError, OSError, ValueError) as exc:
         print(f"solarwm: error: {exc}", file=sys.stderr)

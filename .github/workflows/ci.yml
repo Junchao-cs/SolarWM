@@ -48,8 +48,26 @@ jobs:
         run: |
           python - <<'PY'
           import glob
+          from pathlib import Path
           import tarfile
           import zipfile
+
+          realtime_files = {
+              path.as_posix()
+              for path in Path("src/solarwm/realtime_interaction").rglob("*")
+              if path.is_file() and path.suffix in {
+                  ".py", ".md", ".txt", ".json", ".sh", ".png",
+                  ".html", ".js", ".c", ".pt",
+              }
+          }
+          assert realtime_files
+          source_modules = {path.as_posix() for path in Path("src/solarwm").rglob("*.py")}
+          example_root = Path("examples/solarwm")
+          example_files = {
+              path for path in example_root.rglob("*")
+              if path.is_file() and path.name in {"first.png", "prompt.txt"}
+          }
+          assert example_files
 
           wheels = glob.glob("dist/*.whl")
           sdists = glob.glob("dist/*.tar.gz")
@@ -67,7 +85,14 @@ jobs:
               "solarwm/backends/wan22/runtime/architectures/ti2v_5b.json",
               "solarwm/backends/wan22/runtime/modeling/NOTICE.md",
           }
+          required_wheel.update(name.removeprefix("src/") for name in realtime_files)
+          required_wheel.update(name.removeprefix("src/") for name in source_modules)
+          required_wheel.update(
+              "solarwm/examples/" + path.relative_to(example_root).as_posix()
+              for path in example_files
+          )
           assert required_wheel <= names, sorted(required_wheel - names)
+          assert not any(name.startswith("solarwm/realtime_interaction/cases/") for name in names)
           assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
           assert any(name.endswith(".dist-info/licenses/NOTICE") for name in names)
 
@@ -85,7 +110,13 @@ jobs:
               "SECURITY.md",
               "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
           }
+          required_sdist.update(realtime_files)
+          required_sdist.update(source_modules)
+          required_sdist.update(path.as_posix() for path in example_files)
+          required_sdist.add("examples/solarwm/README.md")
+          required_sdist.add("src/solarwm/realtime_interaction/.ruff.toml")
           assert required_sdist <= names, sorted(required_sdist - names)
+          assert not any(name.startswith("src/solarwm/realtime_interaction/cases/") for name in names)
           PY
           python -m pip install --force-reinstall --no-deps dist/*.whl
           pushd /tmp
