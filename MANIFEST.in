@@ -1,6 +1,7 @@
 include CONTRIBUTING.md
 include NOTICE
 include SECURITY.md
+include data-engine/README.md
 recursive-include .github *.yml
 recursive-include configs *.yaml
 recursive-include docs *.md

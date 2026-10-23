@@ -116,6 +116,9 @@ launch commands for Stage0.5, Stage1, and Stage2.
 
 ## Data
 
+Data preparation pipelines are grouped under [data-engine/](data-engine/README.md),
+with separate `solarwm-data` and `solar_renderer-data` submodules.
+
 The public
 [SolarWM-Data release](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data)
 contains release controls, licenses, recipe and test indexes, small format

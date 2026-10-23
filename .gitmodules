@@ -1,3 +1,8 @@
-[submodule "data-engine"]
-	path = data-engine
+[submodule "solarwm-data"]
+	path = data-engine/solarwm-data
 	url = https://github.com/Enderfga/solarwm-data.git
+	branch = main
+[submodule "solar_renderer-data"]
+	path = data-engine/solar_renderer-data
+	url = https://github.com/Enderfga/SolarRenderer.git
+	branch = data
