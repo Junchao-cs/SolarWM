@@ -1,0 +1,32 @@
+# Model dependencies resolved with Reactor Runtime during `reactor build`.
+# `build.runtime_version` in reactor.yaml selects the Runtime release.
+
+# Native H3 encoder, transformer and causal LoRA loader.
+torch==2.8.0
+torchvision==0.23.0
+diffusers==0.40.0
+transformers==5.14.1
+peft==0.20.0
+accelerate>=1.14
+safetensors>=0.8
+huggingface-hub>=1.25
+fsspec>=2024.6
+einops>=0.8
+imageio==2.37.4
+imageio-ffmpeg==0.6.0
+
+# Four-GPU causal attention. CUTLASS 4.8 lifts the protobuf <7 constraint.
+flash-attn-4==4.0.0b34
+nvidia-cutlass-dsl==4.8.1
+quack-kernels==0.6.5
+
+# CPU media validation and configuration; Runtime shares these dependencies.
+numpy>=2
+PyYAML>=6
+Pillow>=11
+av>=18
+
+# Flash Attention builds after torch is available.
+ninja
+packaging
+wheel

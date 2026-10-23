@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SolarRenderer</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --ivory: #ece7da; --dim: rgba(236,231,218,.62); --faint: rgba(236,231,218,.18); --gold: #ffd678;
+    --W: min(58vw, calc((100vh - 420px) * 1.75)); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; color: var(--ivory);
+    font-family: "Avenir Next", "Avenir", "Helvetica Neue", "PingFang SC", Arial, sans-serif;
+    background: radial-gradient(ellipse at 50% 45%, #1d2a44 0%, #161b26 55%, #0e1016 100%) fixed; }
+  header { display: flex; align-items: center; gap: 28px; padding: 18px 36px 6px; }
+  header img { height: 58px; }
+  .tag { font-size: 22px; letter-spacing: .02em; opacity: .92; }
+  .clock { margin-left: auto; text-align: right; line-height: 1; min-width: 220px; }
+  .clock .num { font-size: 54px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .clock .unit { font-size: 20px; margin-left: 6px; color: var(--dim); }
+  .clock .lab { font-size: 12px; letter-spacing: .22em; color: var(--gold); margin-top: 6px; text-transform: uppercase; }
+  main { display: flex; justify-content: center; align-items: flex-start; gap: 28px; padding: 14px 36px 30px; }
+  .label { font-size: 13px; letter-spacing: .22em; color: var(--dim); margin: 0 0 8px 2px; display: flex; gap: 14px; }
+  .label b { color: var(--ivory); font-weight: 600; }
+  .frame { position: relative; width: 100%; aspect-ratio: 1344 / 768; border-radius: 12px; overflow: hidden; background: #000;
+    box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 0 0 1px rgba(236,231,218,.12); }
+  .frame video, .frame img.fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #left { width: calc(var(--W) * .42); }
+  #right { width: var(--W); }
+  .drop { cursor: pointer; }
+  .drop.over { box-shadow: 0 0 0 2px var(--gold), 0 18px 50px rgba(0,0,0,.45); }
+  .hint { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
+    justify-content: center; text-align: center; padding: 18px; font-size: 15px; letter-spacing: .04em; color: var(--dim);
+    background: rgba(8,10,16,.3); }
+  .hint span.pill { padding: 10px 22px; border: 1px solid rgba(236,231,218,.5); border-radius: 40px;
+    background: rgba(0,0,0,.35); color: var(--ivory); font-size: 18px; }
+  .inset { position: absolute; right: 10px; bottom: 10px; width: 34%; border-radius: 6px; overflow: hidden; display: none;
+    box-shadow: 0 0 0 1px rgba(236,231,218,.45), 0 6px 18px rgba(0,0,0,.5); cursor: pointer; background: #000; }
+  .inset img { display: block; width: 100%; aspect-ratio: 1344 / 768; object-fit: cover; }
+  .inset div { position: absolute; left: 6px; top: 5px; font-size: 9px; letter-spacing: .18em; color: var(--ivory);
+    text-shadow: 0 1px 3px #000; }
+  .badge { position: absolute; top: 12px; right: 14px; font-size: 12px; letter-spacing: .2em; color: var(--gold);
+    background: rgba(0,0,0,.45); padding: 5px 10px; border-radius: 20px; display: none; }
+  .badge.on::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff5a4f;
+    margin-right: 7px; vertical-align: 1px; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .progress { height: 3px; margin-top: 10px; border-radius: 3px; background: var(--faint); overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .4s;
+    box-shadow: 0 0 10px rgba(255,214,120,.7); }
+  .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  button, .btn { background: transparent; color: var(--ivory); border: 1px solid rgba(236,231,218,.3); border-radius: 18px;
+    padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover, .btn:hover { border-color: var(--ivory); }
+  button.on { color: #111; background: var(--gold); border-color: var(--gold); }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  #render { margin-left: auto; padding: 10px 34px; font-size: 16px; font-weight: 600; letter-spacing: .08em; color: #111;
+    background: var(--gold); border-color: var(--gold); box-shadow: 0 0 22px rgba(255,214,120,.35); }
+  #render:disabled { box-shadow: none; }
+  .small { font-size: 12px; color: var(--dim); }
+  .small b { color: var(--ivory); font-weight: 600; }
+  textarea { width: 100%; height: 148px; margin-top: 8px; resize: vertical; padding: 12px 14px; border-radius: 10px;
+    background: rgba(0,0,0,.28); color: var(--ivory); border: 1px solid var(--faint); font: inherit; font-size: 13px;
+    line-height: 1.55; }
+  textarea:focus { outline: none; border-color: rgba(255,214,120,.55); }
+  input[type=number] { width: 120px; background: rgba(0,0,0,.28); color: var(--ivory); border: 1px solid var(--faint);
+    border-radius: 18px; padding: 6px 12px; font: inherit; font-size: 13px; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+  .card { width: 132px; cursor: pointer; opacity: .6; transition: opacity .2s; }
+  .card:hover { opacity: .9; }
+  .card.on { opacity: 1; }
+  .card img { width: 100%; aspect-ratio: 1344 / 768; object-fit: cover; border-radius: 6px; display: block;
+    box-shadow: 0 0 0 1px rgba(236,231,218,.2); }
+  .card.on img { box-shadow: 0 0 0 2px var(--gold); }
+  .card div { font-size: 11px; color: var(--dim); margin-top: 5px; line-height: 1.35; }
+  .msg { min-height: 18px; margin-top: 10px; font-size: 13px; color: var(--dim); }
+  .msg.err { color: #ff8a80; }
+  a { color: var(--gold); }
+</style>
+</head>
+<body>
+<header>
+  <img src="/solarrenderer/static/wordmark.png" alt="SolarRenderer">
+  <div class="tag">Any structure in. Any world out.</div>
+  <div class="clock"><div><span class="num" id="clock">--</span><span class="unit">s</span></div>
+    <div class="lab" id="stage">ready</div></div>
+</header>
+
+<main>
+  <div id="left">
+    <div class="label"><b>INPUT</b><span id="inlab">structure video</span></div>
+    <div class="frame drop" id="drop">
+      <video id="structure" muted playsinline loop preload="auto"></video>
+      <div class="hint" id="inhint"><span class="pill">Drop a structure video</span>
+        <span>a grey box, a segmentation, skeletons, depth, a game's frames, a sketch</span></div>
+      <div class="inset" id="inset"><img id="first" alt=""><div>FIRST FRAME</div></div>
+    </div>
+    <div class="row">
+      <label class="btn">Structure video<input type="file" id="pickVideo" accept="video/*" hidden></label>
+      <label class="btn">First frame<input type="file" id="pickFirst" accept="image/*" hidden></label>
+      <button id="clearFirst" disabled>No first frame</button>
+    </div>
+    <div class="examples" style="margin-top:26px">
+      <div class="label"><b>EXAMPLES</b></div>
+      <div class="cards" id="cards"></div>
+    </div>
+  </div>
+  <div id="right">
+    <div class="label"><b>OUTPUT</b><span id="outlab">rendered on this machine, four steps</span></div>
+    <div class="frame">
+      <img class="fill" id="preview" alt="" style="display:none">
+      <video id="out" muted playsinline loop preload="auto"></video>
+      <div class="hint" id="outhint"><span>Pick an example, or drop your own structure video on the left.</span></div>
+      <div class="badge" id="badge"></div>
+    </div>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="controls" style="margin-top:18px">
+      <div class="label"><b>PROMPT</b><span id="words"></span>
+        <span style="margin-left:auto"><a href="https://github.com/Junchao-cs/SolarWM/blob/main/docs/solar_renderer/prompts.md"
+          target="_blank">how to write one</a></span></div>
+      <textarea id="prompt" spellcheck="false" placeholder="The six-part prompt: what the structure video is, then the look of the render."></textarea>
+      <div class="row">
+        <span class="small"><b>LENGTH</b></span>
+        <span id="lengths"><button data-mode="clip" class="on" title="158 frames, in one pass">6.6 s</button>
+          <button data-mode="causal" title="The whole structure video, chunk by chunk with the causal LoRA pair">Whole video</button></span>
+        <span class="small" style="margin-left:14px"><b>MODELS</b></span>
+        <span id="qualities"></span>
+        <span class="small" style="margin-left:14px"><b>SEED</b></span>
+        <input type="number" id="seed" min="0" value="0">
+        <button id="dice" title="random seed">↻</button>
+        <button id="render" disabled>Render</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const clientId = crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2);
+const FRAMES = 158, FPS = 24;
+const MIN_FRAMES = 22, MAX_FRAMES = 3609;
+const state = { structure: null, first: null, quality: null, frames: 0, orientation: "landscape", causal: false, info: null,
+  running: null, began: 0, timer: null };
+const STAGES = { "1": "loading the renderer", "2": "loading the renderer", "3": "loading the renderer",
+  "4": "loading the renderer", "5": "loading the renderer", "6": "reading the prompt", "7": "loading the VAE",
+  "8": "reading the structure", "9": "reading the structure", "10": "reading the first frame",
+  "11": "encoding the inputs", "16": "rendering", "17": "decoding", "18": "decoding", "19": "saving", "20": "saving" };
+
+function say(text, error) { $("msg").textContent = text || ""; $("msg").className = error ? "msg err" : "msg"; }
+function words() {
+  const n = $("prompt").value.trim().split(/\s+/).filter(Boolean).length;
+  $("words").textContent = n ? `${n} words` : "";
+}
+function ready() {
+  $("render").disabled = !!state.running || !state.structure || !state.quality || !$("prompt").value.trim()
+    || state.frames < (state.causal ? MIN_FRAMES : FRAMES);
+}
+function frames() { return state.causal ? Math.min(state.frames, MAX_FRAMES) : FRAMES; }
+function lengthNote() {
+  if (!state.frames) return;
+  if (state.causal) say(state.frames < MIN_FRAMES ? `The structure video needs at least ${MIN_FRAMES} frames.`
+    : `${(frames() / FPS).toFixed(1)} s, rendered chunk by chunk with the causal LoRA pair.`, state.frames < MIN_FRAMES);
+  else if (state.frames < FRAMES) say(`The structure video needs at least ${FRAMES} frames (${(FRAMES / FPS).toFixed(1)} s at 24 fps); this one has ${state.frames}. Choose "Whole video" for shorter or longer clips.`, true);
+  else say(state.frames > FRAMES ? `The first ${FRAMES} frames are rendered; "Whole video" renders all ${(state.frames / FPS).toFixed(1)} s.` : "");
+}
+function markQualities() {  // a model set is usable when its files, and the causal pair for whole videos, are there
+  if (!state.info) return;
+  for (const b of $("qualities").children) {
+    if (!b.dataset || !b.dataset.id) continue;
+    const q = state.info.qualities.find(x => x.id === b.dataset.id);
+    const missing = state.causal ? q.missing_causal : q.missing;
+    b.disabled = missing.length > 0;
+    b.title = missing.length ? `Missing: ${missing.join(", ")}` : q.note;
+    if (b.disabled && state.quality === q.id) { state.quality = null; b.classList.remove("on"); }
+  }
+  if (!state.quality) { const ok = [...$("qualities").children].find(b => b.dataset && b.dataset.id && !b.disabled); if (ok) ok.click(); }
+}
+for (const b of document.querySelectorAll("#lengths button")) b.onclick = () => {
+  state.causal = b.dataset.mode === "causal";
+  for (const x of document.querySelectorAll("#lengths button")) x.classList.toggle("on", x === b);
+  markQualities(); lengthNote(); ready();
+};
+
+// ---- inputs --------------------------------------------------------------------------------------------------------
+function showStructure(url) {
+  const v = $("structure");
+  v.src = url; v.play().catch(() => {});
+  $("inhint").style.display = "none";
+}
+$("structure").addEventListener("loadedmetadata", () => {
+  const v = $("structure");
+  state.frames = Math.floor(v.duration * FPS + 0.5);
+  state.orientation = v.videoHeight > v.videoWidth ? "portrait" : "landscape";
+  const ratio = state.orientation === "portrait" ? "768 / 1344" : "1344 / 768";
+  for (const f of document.querySelectorAll(".frame")) f.style.aspectRatio = ratio;
+  $("inlab").textContent = `structure video · ${state.frames} frames`;
+  lengthNote(); ready();
+});
+function showFirst(url) {
+  $("first").src = url || ""; $("inset").style.display = url ? "block" : "none";
+  $("clearFirst").disabled = !url;
+}
+async function upload(file) {
+  const form = new FormData();
+  form.append("image", file, file.name.replace(/[^\w.\-]/g, "_"));
+  form.append("type", "input"); form.append("subfolder", "solarrenderer"); form.append("overwrite", "true");
+  const r = await fetch("/upload/image", { method: "POST", body: form });
+  if (!r.ok) throw new Error(`upload failed (${r.status})`);
+  const j = await r.json();
+  return j.subfolder ? `${j.subfolder}/${j.name}` : j.name;
+}
+async function takeVideo(file) {
+  try { say("Uploading the structure video…"); state.structure = await upload(file); showStructure(URL.createObjectURL(file)); select(null); }
+  catch (e) { say(e.message, true); }
+  ready();
+}
+async function takeFirst(file) {
+  try { state.first = await upload(file); showFirst(URL.createObjectURL(file)); say(""); }
+  catch (e) { say(e.message, true); }
+}
+$("pickVideo").onchange = e => e.target.files[0] && takeVideo(e.target.files[0]);
+$("pickFirst").onchange = e => e.target.files[0] && takeFirst(e.target.files[0]);
+$("inset").onclick = e => { e.stopPropagation(); $("pickFirst").click(); };
+$("clearFirst").onclick = () => { state.first = null; showFirst(null); };
+const drop = $("drop");
+drop.onclick = () => $("pickVideo").click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove("over");
+  for (const f of e.dataTransfer.files) (f.type.startsWith("image/") ? takeFirst : takeVideo)(f);
+};
+$("prompt").oninput = () => { words(); ready(); };
+$("dice").onclick = () => { $("seed").value = Math.floor(Math.random() * 2 ** 31); };
+
+function select(id) { for (const c of document.querySelectorAll(".card")) c.classList.toggle("on", c.dataset.id === id); }
+async function useExample(ex) {
+  select(ex.id); say("Loading the example…");
+  const r = await fetch(`/solarrenderer/api/example/${ex.id}`, { method: "POST" });
+  const j = await r.json();
+  state.structure = j.structure; state.first = j.first || null;
+  showStructure(`/solarrenderer/api/example/${ex.id}/structure.mp4`);
+  showFirst(j.first ? `/solarrenderer/api/example/${ex.id}/first.png` : null);
+  $("prompt").value = j.prompt; words(); say(""); ready();
+}
+
+// ---- models and examples -------------------------------------------------------------------------------------------
+async function load() {
+  const info = state.info = await (await fetch("/solarrenderer/api/info")).json();
+  const box = $("qualities");
+  for (const q of info.qualities) {
+    const b = document.createElement("button");
+    b.textContent = q.label; b.dataset.id = q.id;
+    b.title = q.missing.length ? `Missing: ${q.missing.join(", ")}` : q.note;
+    b.disabled = q.missing.length > 0;
+    b.onclick = () => { state.quality = q.id; for (const x of box.children) x.classList.toggle("on", x === b); ready(); };
+    box.appendChild(b); box.appendChild(document.createTextNode(" "));
+  }
+  const usable = info.qualities.filter(q => !q.missing.length);
+  const pick = usable.find(q => q.id === "full") || usable[0];
+  if (pick) [...box.children].find(x => x.dataset && x.dataset.id === pick.id).click();
+  else say("No complete model set found; see the README for the files to download. Hover a button to see what is missing.", true);
+  for (const ex of info.examples) {
+    const c = document.createElement("div");
+    c.className = "card"; c.dataset.id = ex.id;
+    c.innerHTML = `<img src="/solarrenderer/api/example/${ex.id}/${ex.first ? "first.png" : "preview.gif"}" alt=""><div></div>`;
+    c.querySelector("div").textContent = ex.title;
+    c.onclick = () => useExample(ex);
+    $("cards").appendChild(c);
+  }
+}
+
+// ---- rendering -----------------------------------------------------------------------------------------------------
+function tick() { $("clock").textContent = Math.round((performance.now() - state.began) / 1000); }
+function stage(text, fraction) {
+  $("stage").textContent = text;
+  if (fraction !== undefined) $("bar").style.width = `${Math.round(fraction * 100)}%`;
+}
+function finish(text, error) {
+  clearInterval(state.timer); state.running = null;
+  $("badge").style.display = "none"; stage(text);
+  if (error) say(error, true);
+  ready();
+}
+$("render").onclick = async () => {
+  say(""); $("render").disabled = true;
+  const body = { quality: state.quality, structure: state.structure, first: state.first, prompt: $("prompt").value,
+    seed: Number($("seed").value) || 0, length: frames(), orientation: state.orientation, causal: state.causal };
+  try {
+    const g = await fetch("/solarrenderer/api/graph", { method: "POST", body: JSON.stringify(body) });
+    const graph = await g.json();
+    if (!g.ok) throw new Error(graph.error);
+    const r = await fetch("/prompt", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: graph.prompt, client_id: clientId, extra_data: { preview_method: "auto" } }) });
+    const queued = await r.json();
+    if (!r.ok) throw new Error(queued.error ? `${queued.error.message} ${JSON.stringify(queued.node_errors || {})}` : `queue failed (${r.status})`);
+    state.running = queued.prompt_id; state.began = performance.now();
+    clearInterval(state.timer); state.timer = setInterval(tick, 250); tick();
+    $("out").pause(); $("out").removeAttribute("src"); $("out").load();
+    $("preview").style.display = "none"; $("outhint").style.display = "none";
+    $("badge").textContent = "RENDERING"; $("badge").className = "badge on"; $("badge").style.display = "block";
+    stage("queued", 0);
+  } catch (e) { say(e.message, true); ready(); }
+};
+
+function played(file) {
+  const out = $("out"), inp = $("structure");
+  out.src = `/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder || "")}&type=${file.type || "output"}`;
+  out.onloadeddata = () => {
+    $("preview").style.display = "none";
+    inp.currentTime = 0; out.currentTime = 0; inp.play(); out.play();
+  };
+  out.onseeked = null;
+  out.ontimeupdate = () => { if (Math.abs(inp.currentTime - out.currentTime) > 0.15) inp.currentTime = out.currentTime; };
+}
+
+function connect() {
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?clientId=${clientId}`);
+  ws.binaryType = "arraybuffer";
+  ws.onclose = () => setTimeout(connect, 1500);
+  ws.onmessage = e => {
+    if (typeof e.data !== "string") {  // a sampler preview: event 1 = [type][image], event 4 = [length][metadata][image]
+      if (!state.running) return;
+      const view = new DataView(e.data), event = view.getUint32(0);
+      let start = 8, mime = view.getUint32(4) === 2 ? "image/png" : "image/jpeg";
+      if (event === 4) {
+        const n = view.getUint32(4);
+        const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(e.data, 8, n)));
+        if (meta.prompt_id && meta.prompt_id !== state.running) return;
+        start = 8 + n; mime = meta.image_type || "image/jpeg";
+      } else if (event !== 1) return;
+      const img = $("preview"), old = img.src;
+      img.src = URL.createObjectURL(new Blob([new Uint8Array(e.data, start)], { type: mime }));
+      img.style.display = "block";
+      if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+      return;
+    }
+    const { type, data } = JSON.parse(e.data);
+    if (type === "status") {
+      const left = data.status?.exec_info?.queue_remaining;
+      if (state.running && $("stage").textContent === "queued" && left > 1) stage(`queued · ${left - 1} ahead`);
+      return;
+    }
+    if (!state.running || (data && data.prompt_id && data.prompt_id !== state.running)) return;
+    if (type === "executing" && data.node) stage(STAGES[data.node] || "working");
+    else if (type === "progress") {
+      if (data.node === "16") stage(`rendering · ${state.causal ? "chunk" : "step"} ${data.value} of ${data.max}`, data.value / data.max);
+      else if (STAGES[data.node] === "decoding") stage(`decoding · ${Math.round(100 * data.value / data.max)}%`);
+    } else if (type === "executed" && data.node === "20") {
+      const out = data.output || {};
+      const file = (out.images || out.videos || out.gifs || [])[0];
+      if (file) played(file);
+    } else if (type === "execution_success") {
+      const s = Math.round((performance.now() - state.began) / 1000);
+      $("clock").textContent = s; $("bar").style.width = "100%";
+      finish(`rendered in ${s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`}`);
+    } else if (type === "execution_error") finish("failed", `${data.exception_type}: ${data.exception_message}`);
+    else if (type === "execution_interrupted") finish("stopped");
+  };
+}
+
+connect(); load().catch(e => say(`Could not reach the SolarRenderer nodes: ${e.message}`, true)); words();
+</script>
+</body>
+</html>

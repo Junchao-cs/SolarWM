@@ -14,6 +14,11 @@ Third-party source included in this repository
     and selective-checkpointing support in the MiniMax-H3 backend.
     The renderer examples, training configurations, and solarrenderer-caption
     skill and helper scripts come from the same release.
+    ComfyUI, Reactor, evaluation tools, and expanded documentation are adapted
+    from revision e018b0f673de865711fe99844d3976865722b8d0 under
+    comfyui/solar_renderer/, reactor/solar_renderer/, eval/solar_renderer/,
+    and docs/solar_renderer/. Runtime imports, asset paths, deployment inputs,
+    and documentation commands are modified for the integrated SolarWM layout.
     MiniMax-H3 and SolarRenderer model weights are obtained separately and
     remain subject to the MiniMax H3 Community License and Acceptable Use Policy.
 

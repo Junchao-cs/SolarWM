@@ -1,0 +1,14 @@
+__pycache__
+.pytest_cache
+.ruff_cache
+tests
+demo
+assets
+*.mp4
+*.safetensors
+*.pt
+*.log
+.venv
+
+# Keep the integrated renderer package and its silence asset in the build context.
+!.solarwm-source/**

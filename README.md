@@ -61,8 +61,8 @@ and long-horizon inference.
 
 - **October 22, 2026:** We release **SolarWM-H3 Realtime** ([Blog](https://solarx-team.github.io/SolarWM-H3-Realtime/)), enabling **low-latency interactive video generation** from an image and a prompt, with real-time camera control ([Code](src/solarwm/realtime_interaction)).
 - **October 16, 2026:** We release **H3 Streaming VAE Decoder** ([Blog](https://solarx-team.github.io/H3-Streaming-VAE-Decoder/)), enabling **low-latency streaming video decoding** that produces frames as latents arrive. It supports both the official MiniMax-H3 VAE and NVIDIA’s distilled StreamRender-H3 decoder ([Code](src/solarwm/realtime_interaction)).
-- **October 16, 2026:** [SolarRenderer](https://github.com/Enderfga/SolarRenderer) brings four-step, structure-conditioned video rendering to SolarWM, with bidirectional and block-causal training and inference on MiniMax-H3. Follow the [SolarRenderer tutorial](docs/solar_renderer.md) to render from a structure video, an optional first frame, and a prompt.
-- **September 13, 2026:** We release **SolarWM-H3**, the first MiniMax-H3-based world model for streaming, few-step interaction. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/latent-wds.md) are now available for all three stages: Stage0.5, Stage1, and Stage2. Get started with the [H3 guide](docs/backends/minimax-h3.md).
+- **October 16, 2026:** [SolarRenderer](https://github.com/Enderfga/SolarRenderer) brings four-step, structure-conditioned video rendering to SolarWM, with bidirectional and block-causal training and inference on MiniMax-H3. Follow the [SolarRenderer tutorial](docs/solar_renderer/README.md) to render from a structure video, an optional first frame, and a prompt.
+- **September 13, 2026:** We release **SolarWM-H3**, the first MiniMax-H3-based world model for streaming, few-step interaction. Training and inference code, [weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/solarwm/latent-wds.md) are now available for all three stages: Stage0.5, Stage1, and Stage2. Get started with the [H3 guide](docs/solarwm/backends/minimax-h3.md).
 - **September 3, 2026** — We open-source the training and inference code, the
   complete dataset, the data pipeline, model weights for all SolarWM-5B training
   stages, and bidirectional weights for SolarWM-14B, SolarWM-LTX, and SolarWM-H3.
@@ -100,7 +100,7 @@ autoregressive model.
 ## Install
 
 Wan, LTX, and MiniMax-H3 require
-[separate runtime environments](environments/README.md). Activate the
+[separate runtime environments](docs/solarwm/environments.md). Activate the
 environment for the selected backbone, then install the shared SolarWM source:
 
 ```bash
@@ -110,8 +110,8 @@ solarwm environment probe
 
 Model weights are available from the
 [`SolarWM model collection`](https://huggingface.co/collections/junchaoh-cs/solarwm). See the
-[Wan2.2 TI2V-5B guide](docs/backends/wan22-ti2v-5b.md) for Stage0.5, Stage1,
-and Stage2 commands. The [MiniMax-H3 guide](docs/backends/minimax-h3.md) provides
+[Wan2.2 TI2V-5B guide](docs/solarwm/backends/wan22-ti2v-5b.md) for Stage0.5, Stage1,
+and Stage2 commands. The [MiniMax-H3 guide](docs/solarwm/backends/minimax-h3.md) provides
 launch commands for Stage0.5, Stage1, and Stage2.
 
 ## Data
@@ -129,7 +129,7 @@ encoding, your own latent generation, or another workflow whose index points
 to raw data.
 
 1. **Use preencoded latents.** Each latent generation is published in a
-   separate repository. See the [latent-WDS release list](docs/latent-wds.md)
+   separate repository. See the [latent-WDS release list](docs/solarwm/latent-wds.md)
    for available downloads and generations that are still being uploaded.
 2. **Rebuild raw-WDS from annotations.** `SolarWM-Data-Annotation/` is an
    annotation-only release with no videos. It contains the released camera
@@ -144,7 +144,7 @@ to raw data.
    contains the current 1,300-example, 13-source evaluation set in 60
    WebDataset tar files (approximately 77.4 GB), without the training payload.
 
-See the [dataset access guide](docs/data-access.md) for download commands and
+See the [dataset access guide](docs/solarwm/data-access.md) for download commands and
 the payload required by each training, validation, and inference example.
 
 ## Unified commands
@@ -198,9 +198,9 @@ torchrun --standalone --nproc-per-node=8 \
   --set runtime.output_dir=/path/to/output/h3-preencode
 ```
 
-The [quickstart](docs/quickstart.md) covers H3 setup, training, and inference.
-For Stage1/Stage2 training and [full-length inference](docs/backends/minimax-h3.md#full-length-stage2-inference),
-see the [H3 guide](docs/backends/minimax-h3.md). Other models have their own
+The [quickstart](docs/solarwm/quickstart.md) covers H3 setup, training, and inference.
+For Stage1/Stage2 training and [full-length inference](docs/solarwm/backends/minimax-h3.md#full-length-stage2-inference),
+see the [H3 guide](docs/solarwm/backends/minimax-h3.md). Other models have their own
 backend guides.
 
 Every launch writes `resolved-config.json` and `launch-manifest.json` before
@@ -238,17 +238,21 @@ data:
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md)
-- [Runtime environments](environments/README.md)
-- [Architecture](docs/architecture.md)
-- [Data contract](docs/data-contract.md)
-- [Dataset overview and statistics](docs/datasets.md)
-- [Download and access](docs/data-access.md)
-- [Wan 2.2 TI2V-5B backend](docs/backends/wan22-ti2v-5b.md)
-- [Wan 2.2 I2V-A14B backend](docs/backends/wan22-i2v-a14b.md)
-- [LTX-2.5 backend](docs/backends/ltx25.md)
-- [MiniMax-H3 backend](docs/backends/minimax-h3.md)
-- [SolarRenderer: structure-conditioned rendering](docs/solar_renderer.md)
+- [SolarWM guide index](docs/solarwm/README.md)
+- [Quickstart](docs/solarwm/quickstart.md)
+- [Runtime environments](docs/solarwm/environments.md)
+- [Architecture](docs/solarwm/architecture.md)
+- [Data contract](docs/solarwm/data-contract.md)
+- [Dataset overview and statistics](docs/solarwm/datasets.md)
+- [Download and access](docs/solarwm/data-access.md)
+- [Wan 2.2 TI2V-5B backend](docs/solarwm/backends/wan22-ti2v-5b.md)
+- [Wan 2.2 I2V-A14B backend](docs/solarwm/backends/wan22-i2v-a14b.md)
+- [LTX-2.5 backend](docs/solarwm/backends/ltx25.md)
+- [MiniMax-H3 backend](docs/solarwm/backends/minimax-h3.md)
+- [SolarRenderer: structure-conditioned rendering](docs/solar_renderer/README.md)
+- [SolarRenderer inference](docs/solar_renderer/inference.md)
+- [SolarRenderer prompts and first frames](docs/solar_renderer/prompts.md)
+- [SolarRenderer training](docs/solar_renderer/training.md)
 - [SolarRenderer caption skill](skills/solarrenderer-caption/SKILL.md)
 
 ## Acknowledgements
@@ -261,7 +265,7 @@ and pretrained models that make the SolarWM backbone family possible. We also
 thank the authors of all datasets and open-source projects listed in
 [NOTICE](NOTICE). The structure-conditioned rendering integration is adapted
 from [SolarRenderer](https://github.com/Enderfga/SolarRenderer) by Guian Fang
-and collaborators; see the [SolarRenderer paper](https://enderfga.cn/data/solarrenderer.pdf).
+and collaborators; see the [SolarRenderer paper](https://arxiv.org/abs/2610.28630).
 
 ## Citation
 
@@ -283,7 +287,7 @@ Paper: https://arxiv.org/abs/2609.02886
 ```
 
 If you use the SolarRenderer integration, please also cite
-[SolarRenderer: Few-Step Generative Reference Rendering](https://enderfga.cn/data/solarrenderer.pdf):
+[SolarRenderer: Few-Step Generative Reference Rendering](https://arxiv.org/abs/2610.28630):
 
 ```bibtex
 @article{fang2026solarrenderer,
@@ -292,7 +296,7 @@ If you use the SolarRenderer integration, please also cite
             Huang, Junchao and Jiang, Lutao and Wang, Xin and
             Song, Yiren and Jiang, Li and Shou, Mike Zheng},
   year   = {2026},
-  url    = {https://enderfga.cn/data/solarrenderer.pdf}
+  url    = {https://arxiv.org/abs/2610.28630}
 }
 ```
 

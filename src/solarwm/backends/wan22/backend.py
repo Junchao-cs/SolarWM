@@ -32,7 +32,7 @@ class Wan22Backend:
     def _unsupported_training_route(self) -> NoReturn:
         raise BackendContractError(
             f"Wan2.2 training configuration for {self.family} has no executable "
-            "supported dispatch; see the matching guide under docs/backends/"
+            "supported dispatch; see the matching guide under docs/solarwm/backends/"
         )
 
     def train(self, config: Mapping[str, Any]) -> int:

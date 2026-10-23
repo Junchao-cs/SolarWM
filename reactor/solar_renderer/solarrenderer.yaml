@@ -1,0 +1,2 @@
+# Run python stage_source.py before reactor build to snapshot this checkout.
+source: .solarwm-source

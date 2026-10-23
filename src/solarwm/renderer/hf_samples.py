@@ -66,7 +66,8 @@ def main():
             shards = sorted(glob.glob(pattern))
             if not shards:
                 raise SystemExit(
-                    f"no shards at {pattern}; download them first (see docs/solar_renderer.md)"
+                    f"no shards at {pattern}; download them first "
+                    "(see docs/solar_renderer/README.md)"
                 )
             done = 0
             for shard in shards:

@@ -1,0 +1,9 @@
+{
+  "name": "solarrenderer-reactor-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"dev": "vite", "build": "tsc --noEmit && vite build"},
+  "dependencies": {"@reactor-team/js-sdk": "3.2.0", "@reactor-team/ui": "1.4.1", "react": "19.1.0", "react-dom": "19.1.0", "hls.js": "^1.6.15"},
+  "devDependencies": {"@types/node": "^22", "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "typescript": "^5.9.3", "vite": "8.3.4"}
+}

@@ -14,11 +14,11 @@ of the reproduced result.
 
 H3 Realtime deployment uses a separate environment and currently requires eight
 Blackwell GPUs. Follow the
-[realtime deployment guide](../src/solarwm/realtime_interaction/README.md)
+[realtime deployment guide](../../src/solarwm/realtime_interaction/README.md)
 for its installation order, model downloads, and web demo commands.
 
 SolarRenderer uses its own environment. Follow the
-[SolarRenderer tutorial](../docs/solar_renderer.md#install) for installation,
+[SolarRenderer tutorial](../solar_renderer/README.md#install) for installation,
 structure-conditioned inference, and LoRA training.
 
 Do not install these stacks into one environment. Start from the matching

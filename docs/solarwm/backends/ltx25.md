@@ -20,7 +20,7 @@ and text encoder during every training step. Track the payload in the
 ## Setup
 
 Activate the LTX environment from
-[Runtime environments](../../environments/README.md), then set:
+[Runtime environments](../environments.md), then set:
 
 ```bash
 export SOLAR_REPO=/path/to/SolarWM

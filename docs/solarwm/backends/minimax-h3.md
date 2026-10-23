@@ -7,7 +7,7 @@ Stage2 also supports full-length inference from a first image and camera traject
 ## Setup
 
 Activate the H3 environment from
-[Runtime environments](../../environments/README.md), then set:
+[Runtime environments](../environments.md), then set:
 
 ```bash
 export SOLAR_REPO=/path/to/SolarWM
@@ -74,7 +74,7 @@ unmodified configs retain the released recipes.
 
 H3 training uses `data.shuffle_buffer: 32768` to mix source-ordered indexes.
 
-## Stage1 / Stage2 setup
+## Stage1 and Stage2 setup
 
 For training across stages, download the three EMA packages from the
 [SolarWM-H3 weight repository](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B).

@@ -27,3 +27,4 @@ checkpoints/
 *.tar.gz
 *.part
 .env
+/eval_models/

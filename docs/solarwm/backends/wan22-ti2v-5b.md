@@ -25,7 +25,7 @@ Use [Download and access](../data-access.md) only if you need raw-WDS for the
 ## Setup
 
 Activate the Wan environment from
-[Runtime environments](../../environments/README.md), then set:
+[Runtime environments](../environments.md), then set:
 
 ```bash
 export SOLAR_REPO=/path/to/SolarWM

@@ -31,13 +31,13 @@ Do not turn a diagnosis-only request into a restart or code change.
 
 Read the document for the selected backend before acting:
 
-- [Wan 2.2 TI2V-5B](../../docs/backends/wan22-ti2v-5b.md)
-- [Wan 2.2 I2V-A14B](../../docs/backends/wan22-i2v-a14b.md)
-- [LTX-2.5](../../docs/backends/ltx25.md)
-- [MiniMax-H3](../../docs/backends/minimax-h3.md)
+- [Wan 2.2 TI2V-5B](../../docs/solarwm/backends/wan22-ti2v-5b.md)
+- [Wan 2.2 I2V-A14B](../../docs/solarwm/backends/wan22-i2v-a14b.md)
+- [LTX-2.5](../../docs/solarwm/backends/ltx25.md)
+- [MiniMax-H3](../../docs/solarwm/backends/minimax-h3.md)
 
-Read [runtime environments](../../environments/README.md) for backend setup.
-Read the [data contract](../../docs/data-contract.md) only when the request
+Read [runtime environments](../../docs/solarwm/environments.md) for backend setup.
+Read the [data contract](../../docs/solarwm/data-contract.md) only when the request
 involves indexes, sampling, storage transport, camera inputs, or shard access.
 
 ## What each training route learns
@@ -89,7 +89,7 @@ Loss terminology:
 Wan I2V-A14B and LTX-2.5 expose no Stage1 or Stage2 training route
 in the current release. Reject those combinations before model allocation.
 
-For H3 Stage1/2, use the [backend guide](../../docs/backends/minimax-h3.md#stage1--stage2-setup).
+For H3 Stage1/2, use the [backend guide](../../docs/solarwm/backends/minimax-h3.md#stage1-and-stage2-setup).
 Keep the automatically frozen validation plan, encoded-silence condition and tail-camera
 rules fixed. Stage2 EMA begins at student update 39 (outer step 196); validation
 at steps 20 and 100 is LIVE only, and step 200 includes LIVE and EMA.
@@ -252,6 +252,50 @@ A validation step is complete only when all intended logical slots and passes
 have terminal manifests, the successful slots have videos, comparison outputs
 are present, and the final completion marker exists. Preserve error manifests
 and report partial output sets as partial.
+
+### Publish node-local validation to GCS
+
+Use the repository publisher for comparison outputs carrying a local
+`solarwm.validation-comparison.v1` completion marker. Run one independent process
+per node-local output tree, outside `torchrun`, using the same destination and
+node count with unique ranks `0..N-1`:
+
+```bash
+solarwm publish-validation \
+  --run-dir "${SOLAR_OUTPUT_ROOT}" \
+  --destination "${SOLAR_GCS_OUTPUT_PREFIX}" \
+  --node-rank "${SOLAR_NODE_RANK}" --num-nodes "${SOLAR_NUM_NODES}" \
+  --watch
+```
+
+Supply an absolute local run directory and a unique `gs://` run prefix. Use the
+workload's native identity with object create, read, and list permissions. Keep
+credentials out of arguments, checked-in configs, and examples. Shared output
+trees need only one publisher (`--node-rank 0 --num-nodes 1`); the declared count
+is the number of independent publication partitions, not GPU or SP rank count.
+
+The public tree is `validation/step_<step>_<pass>/{compare,manifests,errors}`.
+Node acknowledgements live under `receipts/node_<rank>.json`. Node zero checks
+every receipt, exact logical slot coverage, and object sizes/checksums before
+writing the global `COMPLETE.json`. A node with no exported samples must still
+have a local completion marker and publish its empty receipt. Output counts come
+from the markers, including runs that export fewer samples than they generate.
+
+Only canonical comparison artifacts are uploaded; staging, configs, checkpoints,
+and logs are outside this command's scope. Videos and sample manifests remain
+experiment data: this is not a public-data redaction/export command. The publisher
+does not change generation, sampling, or local cleanup behavior.
+
+Keep node zero running until peers finish; it retries unfinished aggregation on
+each poll. Stop watch mode with an interrupt. After training, invoke once without
+`--watch` on each node and finally on node zero: exit 0 means that node's work is
+complete (global completion on node zero), 1 means pending or partial results, and
+2 means an error requiring inspection. Missing files or conflicting objects never
+produce a successful global marker. Failed samples, when present, produce an
+explicit partial marker. Identical uploads are idempotent; different contents at
+the same key are rejected. Fix the cause and rerun with the same destination;
+never resolve a conflict by overwriting an existing result. Session URLs stay in
+memory, so process restart retries the interrupted file and skips verified files.
 
 ### 8. Monitor and diagnose from evidence
 

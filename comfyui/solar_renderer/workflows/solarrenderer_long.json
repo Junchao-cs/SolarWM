@@ -1,0 +1,1682 @@
+{
+ "id": "3a873ec8-b1b2-4b3c-8e11-101c14203a7c",
+ "revision": 0,
+ "last_node_id": 20,
+ "last_link_id": 15,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "UNETLoader",
+   "pos": [
+    80,
+    110
+   ],
+   "size": [
+    270,
+    82
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "unet_name",
+     "locked": null,
+     "name": "unet_name",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "unet_name"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "weight_dtype",
+     "locked": null,
+     "name": "weight_dtype",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "weight_dtype"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MODEL",
+     "locked": null,
+     "name": "MODEL",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      1
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "UNETLoader"
+   },
+   "widgets_values": [
+    "minimax_h3_ref2va_bf16.safetensors",
+    "default"
+   ],
+   "widgets_values_named": {
+    "unet_name": "minimax_h3_ref2va_bf16.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  {
+   "id": 2,
+   "type": "SolarRendererLoraLoader",
+   "pos": [
+    440,
+    110
+   ],
+   "size": [
+    281.9,
+    82
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "model",
+     "locked": null,
+     "name": "model",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "link": 1
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "lora_name",
+     "locked": null,
+     "name": "lora_name",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "lora_name"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "strength",
+     "locked": null,
+     "name": "strength",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MODEL",
+     "locked": null,
+     "name": "MODEL",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      2
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolarRendererLoraLoader"
+   },
+   "widgets_values": [
+    "solarrenderer_causal_4step_lora.safetensors",
+    1
+   ],
+   "widgets_values_named": {
+    "lora_name": "solarrenderer_causal_4step_lora.safetensors",
+    "strength": 1
+   }
+  },
+  {
+   "id": 3,
+   "type": "SolarRendererLoraLoader",
+   "pos": [
+    801.9,
+    110
+   ],
+   "size": [
+    281.9,
+    82
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "model",
+     "locked": null,
+     "name": "model",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "link": 2
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "lora_name",
+     "locked": null,
+     "name": "lora_name",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "lora_name"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "strength",
+     "locked": null,
+     "name": "strength",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "strength"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MODEL",
+     "locked": null,
+     "name": "MODEL",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      8
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolarRendererLoraLoader"
+   },
+   "widgets_values": [
+    "solarrenderer_causal_control_lora.safetensors",
+    1
+   ],
+   "widgets_values_named": {
+    "lora_name": "solarrenderer_causal_control_lora.safetensors",
+    "strength": 1
+   }
+  },
+  {
+   "id": 6,
+   "type": "CLIPLoader",
+   "pos": [
+    80,
+    302
+   ],
+   "size": [
+    270,
+    106
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "clip_name",
+     "locked": null,
+     "name": "clip_name",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "clip_name"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "type",
+     "locked": null,
+     "name": "type",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "type"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "device",
+     "locked": null,
+     "name": "device",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "device"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "CLIP",
+     "locked": null,
+     "name": "CLIP",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "CLIP",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      4
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPLoader"
+   },
+   "widgets_values": [
+    "qwen3vl_32b_minimax_h3_bf16.safetensors",
+    "minimax",
+    "default"
+   ],
+   "widgets_values_named": {
+    "clip_name": "qwen3vl_32b_minimax_h3_bf16.safetensors",
+    "type": "minimax",
+    "device": "default"
+   }
+  },
+  {
+   "id": 7,
+   "type": "VAELoader",
+   "pos": [
+    80,
+    518
+   ],
+   "size": [
+    270,
+    58
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vae_name",
+     "locked": null,
+     "name": "vae_name",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "vae_name"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "VAE",
+     "locked": null,
+     "name": "VAE",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VAE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      5,
+      13
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "minimax_h3_video_vae_fp16.safetensors"
+   ],
+   "widgets_values_named": {
+    "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+   }
+  },
+  {
+   "id": 8,
+   "type": "LoadVideo",
+   "pos": [
+    80,
+    686
+   ],
+   "size": [
+    280,
+    234
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "file",
+     "locked": null,
+     "name": "file",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "file"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "choose file to upload",
+     "locked": null,
+     "name": "upload",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGEUPLOAD",
+     "widget": {
+      "name": "upload"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "VIDEO",
+     "locked": null,
+     "name": "VIDEO",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      3
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadVideo"
+   },
+   "widgets_values": [
+    "structure.mp4",
+    "image"
+   ],
+   "widgets_values_named": {
+    "file": "structure.mp4",
+    "upload": "image"
+   }
+  },
+  {
+   "id": 9,
+   "type": "GetVideoComponents",
+   "pos": [
+    440,
+    302
+   ],
+   "size": [
+    191.9,
+    106
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      6
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "bit_depth",
+     "locked": null,
+     "name": "bit_depth",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "color_space",
+     "locked": null,
+     "name": "color_space",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetVideoComponents"
+   }
+  },
+  {
+   "id": 10,
+   "type": "LoadImage",
+   "pos": [
+    80,
+    1030
+   ],
+   "size": [
+    280,
+    314
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "image",
+     "locked": null,
+     "name": "image",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "image"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "choose file to upload",
+     "locked": null,
+     "name": "upload",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGEUPLOAD",
+     "widget": {
+      "name": "upload"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "IMAGE",
+     "locked": null,
+     "name": "IMAGE",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      7
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MASK",
+     "locked": null,
+     "name": "MASK",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MASK",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "first.png",
+    "image"
+   ],
+   "widgets_values_named": {
+    "image": "first.png",
+    "upload": "image"
+   }
+  },
+  {
+   "id": 11,
+   "type": "SolarRendererConditioning",
+   "pos": [
+    801.9,
+    302
+   ],
+   "size": [
+    400,
+    240
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "clip",
+     "locked": null,
+     "name": "clip",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "CLIP",
+     "pos": null,
+     "link": 4
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vae",
+     "locked": null,
+     "name": "vae",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VAE",
+     "pos": null,
+     "link": 5
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "structure",
+     "locked": null,
+     "name": "structure",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 6
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "first_frame",
+     "locked": null,
+     "name": "first_frame",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 7
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "structure_vae",
+     "locked": null,
+     "name": "structure_vae",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "VAE",
+     "pos": null,
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "prompt",
+     "locked": null,
+     "name": "prompt",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "prompt"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "width",
+     "locked": null,
+     "name": "width",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "height",
+     "locked": null,
+     "name": "height",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "length",
+     "locked": null,
+     "name": "length",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "INT",
+     "widget": {
+      "name": "length"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "positive",
+     "locked": null,
+     "name": "positive",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "CONDITIONING",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      9
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "latent",
+     "locked": null,
+     "name": "latent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      10
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolarRendererConditioning"
+   },
+   "widgets_values": [
+    "subject_definitions:\n<Video 1> is a semantic segmentation of the scene, one flat colour per class (road, sidewalk, building, vegetation, vehicle, pedestrian, sky and so on), frame by frame, from the same camera as the target video.\n<Video 2> is the first frame of [Shot 1], held still.\n\nsummary:\n[keyframe completion + reference generation] The target video begins from <Video 2> and follows the frame-by-frame structure and motion of <Video 1>. A retro synthwave highway run: a neon-trimmed coupe overtakes a glowing semi-truck, flies under a neon gantry and overpass at dusk, and slides back into its lane.\n\nretention_analysis:\n<Video 1> (frame-by-frame layout of every class and camera): attribute_transfer - every region keeps its class, outline and place; materials, colours and lighting are not given by <Video 1>; the flat class colours are not shown.\n<Video 2> ([Shot 1] first frame): fully_preserved - the composition, subjects, materials, colours and lighting of <Video 2> are the target video's first frame.\n\ndetailed_description:\nThe target video is a stylised synthwave animation in the look of an eighties retro-futuristic music video, with a magenta-to-violet sunset gradient sky, a huge striped setting sun on the horizon, neon pink and cyan edge lighting, glossy reflective surfaces and a light film grain. [Shot 1] The shot begins from <Video 2>. The camera trails a few metres behind and above a black wedge-shaped sports coupe with a glowing cyan light strip across its tail, in the right lane of a six-lane divided highway whose lane lines glow hot pink. Ahead sits the back of a chrome semi-trailer outlined in purple neon, pulled by a tractor with a glowing grille. After half a second the coupe glides left into the middle lane, the camera tilting with it, and begins to close on the truck. The trailer's mirror-like side slides by on the right, reflecting the sunset, then its glowing wheels and the cab with chrome stacks, passing within a couple of metres. Midway, a gantry with two glowing signs in retro lettering sweeps overhead. Further up the road, tail lights of an SUV and a sedan streak away in the fast lane, with a hatchback, a box truck and a van glowing ahead. Across a dark median lined with tall lamp posts topped by pink light bars, oncoming cars and a coach race past as streaks of white light. Near the end the coupe flashes under a concrete overpass trimmed with neon tubes, while a glowing SUV and a delivery truck cross above, their light trails painting streaks along the bridge railing. Clear of the truck, the coupe slides back into the right lane toward the setting sun. The coupe stays planted through every move, rocking slightly over expansion joints, and the camera follows with a slight lag so each lane change feels smooth, heavy and rhythmic, like a slow camera move in a music video. Guard rails gleam with reflected pink light, palm-like trees and stylised pines stand as black silhouettes, utility poles and their wires cut thin lines across the gradient sky, and low warehouses with glowing windows and purple hills fade toward a wireframe-like horizon.\n\noverall_soundscape:\nSmooth tyre roar and wind with a punchy engine note as the coupe overtakes, a deep whoosh past the truck and a hollow echo under the overpass.\n\nnon_diegetic_music:\nN/A",
+    1344,
+    768,
+    3609
+   ],
+   "widgets_values_named": {
+    "prompt": "subject_definitions:\n<Video 1> is a semantic segmentation of the scene, one flat colour per class (road, sidewalk, building, vegetation, vehicle, pedestrian, sky and so on), frame by frame, from the same camera as the target video.\n<Video 2> is the first frame of [Shot 1], held still.\n\nsummary:\n[keyframe completion + reference generation] The target video begins from <Video 2> and follows the frame-by-frame structure and motion of <Video 1>. A retro synthwave highway run: a neon-trimmed coupe overtakes a glowing semi-truck, flies under a neon gantry and overpass at dusk, and slides back into its lane.\n\nretention_analysis:\n<Video 1> (frame-by-frame layout of every class and camera): attribute_transfer - every region keeps its class, outline and place; materials, colours and lighting are not given by <Video 1>; the flat class colours are not shown.\n<Video 2> ([Shot 1] first frame): fully_preserved - the composition, subjects, materials, colours and lighting of <Video 2> are the target video's first frame.\n\ndetailed_description:\nThe target video is a stylised synthwave animation in the look of an eighties retro-futuristic music video, with a magenta-to-violet sunset gradient sky, a huge striped setting sun on the horizon, neon pink and cyan edge lighting, glossy reflective surfaces and a light film grain. [Shot 1] The shot begins from <Video 2>. The camera trails a few metres behind and above a black wedge-shaped sports coupe with a glowing cyan light strip across its tail, in the right lane of a six-lane divided highway whose lane lines glow hot pink. Ahead sits the back of a chrome semi-trailer outlined in purple neon, pulled by a tractor with a glowing grille. After half a second the coupe glides left into the middle lane, the camera tilting with it, and begins to close on the truck. The trailer's mirror-like side slides by on the right, reflecting the sunset, then its glowing wheels and the cab with chrome stacks, passing within a couple of metres. Midway, a gantry with two glowing signs in retro lettering sweeps overhead. Further up the road, tail lights of an SUV and a sedan streak away in the fast lane, with a hatchback, a box truck and a van glowing ahead. Across a dark median lined with tall lamp posts topped by pink light bars, oncoming cars and a coach race past as streaks of white light. Near the end the coupe flashes under a concrete overpass trimmed with neon tubes, while a glowing SUV and a delivery truck cross above, their light trails painting streaks along the bridge railing. Clear of the truck, the coupe slides back into the right lane toward the setting sun. The coupe stays planted through every move, rocking slightly over expansion joints, and the camera follows with a slight lag so each lane change feels smooth, heavy and rhythmic, like a slow camera move in a music video. Guard rails gleam with reflected pink light, palm-like trees and stylised pines stand as black silhouettes, utility poles and their wires cut thin lines across the gradient sky, and low warehouses with glowing windows and purple hills fade toward a wireframe-like horizon.\n\noverall_soundscape:\nSmooth tyre roar and wind with a punchy engine note as the coupe overtakes, a deep whoosh past the truck and a hollow echo under the overpass.\n\nnon_diegetic_music:\nN/A",
+    "width": 1344,
+    "height": 768,
+    "length": 3609
+   }
+  },
+  {
+   "id": 16,
+   "type": "SolarRendererCausalSampler",
+   "pos": [
+    1281.9,
+    110
+   ],
+   "size": [
+    374.9,
+    146
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "model",
+     "locked": null,
+     "name": "model",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MODEL",
+     "pos": null,
+     "link": 8
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "positive",
+     "locked": null,
+     "name": "positive",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "CONDITIONING",
+     "pos": null,
+     "link": 9
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "latent",
+     "locked": null,
+     "name": "latent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "link": 10
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "seed",
+     "locked": null,
+     "name": "seed",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "cache",
+     "locked": null,
+     "name": "cache",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "cache"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "LATENT",
+     "locked": null,
+     "name": "LATENT",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      11
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolarRendererCausalSampler"
+   },
+   "widgets_values": [
+    0,
+    "randomize",
+    "auto"
+   ],
+   "widgets_values_named": {
+    "seed": 0,
+    "control_after_generate": "randomize",
+    "cache": "auto"
+   }
+  },
+  {
+   "id": 17,
+   "type": "LTXVSeparateAVLatent",
+   "pos": [
+    1736.8000000000002,
+    110
+   ],
+   "size": [
+    168.9,
+    46
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "av_latent",
+     "locked": null,
+     "name": "av_latent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "link": 11
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video_latent",
+     "locked": null,
+     "name": "video_latent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      12
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio_latent",
+     "locked": null,
+     "name": "audio_latent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LTXVSeparateAVLatent"
+   }
+  },
+  {
+   "id": 18,
+   "type": "VAEDecode",
+   "pos": [
+    1985.7000000000003,
+    110
+   ],
+   "size": [
+    140,
+    46
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "samples",
+     "locked": null,
+     "name": "samples",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "LATENT",
+     "pos": null,
+     "link": 12
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vae",
+     "locked": null,
+     "name": "vae",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VAE",
+     "pos": null,
+     "link": 13
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "IMAGE",
+     "locked": null,
+     "name": "IMAGE",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      14
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecode"
+   }
+  },
+  {
+   "id": 19,
+   "type": "CreateVideo",
+   "pos": [
+    2205.7000000000003,
+    110
+   ],
+   "size": [
+    270,
+    150
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 14
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "AUDIO",
+     "pos": null,
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "bit_depth",
+     "locked": null,
+     "name": "bit_depth",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "bit_depth"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "color_space",
+     "locked": null,
+     "name": "color_space",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "color_space"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "codec"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "VIDEO",
+     "locked": null,
+     "name": "VIDEO",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      15
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CreateVideo"
+   },
+   "widgets_values": [
+    24,
+    "auto",
+    "sRGB",
+    "none"
+   ],
+   "widgets_values_named": {
+    "fps": 24,
+    "bit_depth": "auto",
+    "color_space": "sRGB",
+    "codec": "none"
+   }
+  },
+  {
+   "id": 20,
+   "type": "SaveVideo",
+   "pos": [
+    2555.7000000000003,
+    110
+   ],
+   "size": [
+    270,
+    130
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "link": 15
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "filename_prefix",
+     "locked": null,
+     "name": "filename_prefix",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "format",
+     "locked": null,
+     "name": "format",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "format.codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "format.codec"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "codec"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "encoding",
+     "locked": null,
+     "name": "codec.encoding",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "codec.encoding"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "properties": {},
+   "widgets_values": [
+    "solarrenderer_long",
+    "mp4",
+    "auto",
+    "h264",
+    "auto"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "solarrenderer_long",
+    "format": "mp4",
+    "format.codec": "auto",
+    "codec": "h264",
+    "codec.encoding": "auto"
+   }
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "MODEL"
+  ],
+  [
+   2,
+   2,
+   0,
+   3,
+   0,
+   "MODEL"
+  ],
+  [
+   3,
+   8,
+   0,
+   9,
+   0,
+   "VIDEO"
+  ],
+  [
+   4,
+   6,
+   0,
+   11,
+   0,
+   "CLIP"
+  ],
+  [
+   5,
+   7,
+   0,
+   11,
+   1,
+   "VAE"
+  ],
+  [
+   6,
+   9,
+   0,
+   11,
+   2,
+   "IMAGE"
+  ],
+  [
+   7,
+   10,
+   0,
+   11,
+   3,
+   "IMAGE"
+  ],
+  [
+   8,
+   3,
+   0,
+   16,
+   0,
+   "MODEL"
+  ],
+  [
+   9,
+   11,
+   0,
+   16,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   10,
+   11,
+   1,
+   16,
+   2,
+   "LATENT"
+  ],
+  [
+   11,
+   16,
+   0,
+   17,
+   0,
+   "LATENT"
+  ],
+  [
+   12,
+   17,
+   0,
+   18,
+   0,
+   "LATENT"
+  ],
+  [
+   13,
+   7,
+   0,
+   18,
+   1,
+   "VAE"
+  ],
+  [
+   14,
+   18,
+   0,
+   19,
+   0,
+   "IMAGE"
+  ],
+  [
+   15,
+   19,
+   0,
+   20,
+   0,
+   "VIDEO"
+  ]
+ ],
+ "floatingLinks": null,
+ "groups": [],
+ "definitions": null,
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.9,
+   "offset": [
+    416,
+    110
+   ]
+  },
+  "reroutes": null
+ },
+ "version": 0.4
+}

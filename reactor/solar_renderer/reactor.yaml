@@ -1,0 +1,37 @@
+$schema: reactor/v2
+
+model:
+  name: solarrenderer
+  version: v0.1.1
+  description: Render a structure video with an optional appearance reference and a six-part prompt.
+  resources:
+    gpu:
+      type: NVIDIA_B200
+      count: 4
+    cpu:
+      request: "4"
+      limit: "16"
+    memory:
+      request: 64Gi
+      limit: 192Gi
+
+runtime:
+  import: solarrenderer:SolarRenderer
+  config: solarrenderer.yaml
+  weights_path: ~/.cache/reactor_registry/solarrenderer
+
+build:
+  runtime_version: "3.8.3"
+  python_requirements: requirements.txt
+  cuda_version: "12.8.1"
+  python_version: "3.12"
+  system_packages:
+    - build-essential
+    - git
+    - libgl1
+    - libglib2.0-0
+  run:
+    - pip install --no-build-isolation flash-attn==2.8.3
+  runtime_env:
+    TOKENIZERS_PARALLELISM: "false"
+    PYTORCH_ALLOC_CONF: "expandable_segments:True"

@@ -7,7 +7,7 @@ complete setup and downloads, then skip to [Stage2 inference](#5-run-stage2-infe
 ## 1. Set up the H3 environment
 
 Wan, LTX, and MiniMax-H3 use separate environments. Follow the H3 setup in
-[Runtime environments](../environments/README.md), activate it, and install
+[Runtime environments](environments.md), activate it, and install
 SolarWM:
 
 ```bash

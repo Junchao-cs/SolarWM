@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+demo/node_modules/
+demo/dist/
+demo/.env.local
+.venv/
+weights/
+schema.json
+.solarwm-source/

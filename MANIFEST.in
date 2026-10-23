@@ -4,11 +4,17 @@ include SECURITY.md
 recursive-include .github *.yml
 recursive-include configs *.yaml
 recursive-include docs *.md
-recursive-include environments *.md
 recursive-include src/solarwm/realtime_interaction *.md *.txt *.json *.sh *.png *.html *.js *.c *.pt
 include src/solarwm/realtime_interaction/.ruff.toml
-recursive-include examples/solarwm *.md *.txt *.png
+recursive-include comfyui/solar_renderer *.py *.md *.json *.html *.png
+recursive-include reactor/solar_renderer *.py *.md *.yaml *.txt *.json *.ts *.tsx *.css *.html *.png
+recursive-include reactor/solar_renderer LICENSE NOTICE .dockerignore .gitignore
+prune reactor/solar_renderer/demo/node_modules
+prune reactor/solar_renderer/demo/dist
+prune reactor/solar_renderer/.solarwm-source
+recursive-include eval/solar_renderer *.py *.md *.sh
 recursive-include examples/solar_renderer *.txt *.png *.mp4
+recursive-include examples/solarwm *.md *.txt *.png
 recursive-include skills *.md *.py
 recursive-include tests *.py
 recursive-include tools *.py

@@ -6,12 +6,27 @@ MiniMax-H3's Ref2VA transformer with a control LoRA and a four-step LoRA. This
 guide covers bidirectional and block-causal inference, data encoding, and the
 four training stages in SolarWM.
 
-The [paper](https://enderfga.cn/data/solarrenderer.pdf),
+The [paper](https://arxiv.org/abs/2610.28630),
 [project page](https://enderfga.cn/SolarRenderer),
 [weights](https://huggingface.co/Enderfga/SolarRenderer), and
 [dataset](https://huggingface.co/datasets/Enderfga/SolarRenderer-Data) are
 maintained by the SolarRenderer authors. Please cite both projects when using
-this integration; see [Citation](../README.md#citation).
+this integration; see [Citation](../../README.md#citation).
+
+The renderer documentation and integrations are adapted from SolarRenderer
+revision [`e018b0f673de865711fe99844d3976865722b8d0`](https://github.com/Enderfga/SolarRenderer/tree/e018b0f673de865711fe99844d3976865722b8d0).
+This guide is the end-to-end reference for the integrated `solarwm.renderer`
+entry points and the configurations in `configs/solar_renderer/`.
+
+## Guide navigation
+
+- [Inference](inference.md): inputs, bidirectional rendering, and causal rendering.
+- [Prompts and first frames](prompts.md): the six-part caption format and image helpers.
+- [Training](training.md): encoding, the four adapter stages, and exporting weights.
+- [ComfyUI integration](../../comfyui/solar_renderer/README.md).
+- [Reactor integration](../../reactor/solar_renderer/README.md).
+- [Benchmark and evaluation](../../eval/solar_renderer/README.md).
+- [SolarWM camera-model guides](../solarwm/README.md).
 
 ## Install
 
@@ -36,7 +51,7 @@ python -m solarwm.renderer --help
 
 Inference uses one CUDA GPU. The text encoder is released before the video
 transformer is loaded. Training uses one node with eight GPUs; the
-[original training guide](https://github.com/Enderfga/SolarRenderer/blob/main/docs/training.md)
+[original training guide](https://github.com/Enderfga/SolarRenderer/blob/e018b0f673de865711fe99844d3976865722b8d0/docs/training.md)
 reports approximately 140 GB of memory per GPU for its configurations.
 
 ## Download the models
@@ -69,7 +84,7 @@ camera-model LoRAs are separate checkpoints.
 
 ## Render the included example
 
-The [synthwave highway example](../examples/solar_renderer/sem-highway_synthwave)
+The [synthwave highway example](../../examples/solar_renderer/sem-highway_synthwave)
 contains a semantic structure video, a first frame, and a six-part prompt:
 
 ```bash
@@ -111,10 +126,10 @@ non_diegetic_music:
 
 ### Write prompts with the caption skill
 
-Give the local [SolarRenderer caption skill](../skills/solarrenderer-caption/SKILL.md)
+Give the local [SolarRenderer caption skill](../../skills/solarrenderer-caption/SKILL.md)
 to your coding agent together with the structure video and optional first frame.
 Ask it to write `prompt.txt` in the desired style. The skill uses
-[`conditions.py`](../skills/solarrenderer-caption/scripts/conditions.py) to preserve
+[`conditions.py`](../../skills/solarrenderer-caption/scripts/conditions.py) to preserve
 the exact training-time input descriptions and retention rules. You can copy the
 whole `skills/solarrenderer-caption/` folder into your agent's skill directory;
 keep its `scripts/` folder intact.
@@ -229,7 +244,7 @@ Training reads the encoded samples directly. Install the corresponding
 ## Train the adapters
 
 The four configurations in
-[`configs/solar_renderer/`](../configs/solar_renderer)
+[`configs/solar_renderer/`](../../configs/solar_renderer)
 use the following schedules:
 
 | Stage | Configuration | Steps | Global batch |
@@ -353,5 +368,5 @@ corresponding to your completed run.
 ## Further resources
 
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data)
-- [Benchmark and evaluation instructions](https://github.com/Enderfga/SolarRenderer/blob/main/eval/README.md)
-- [SolarWM MiniMax-H3 camera-model guide](backends/minimax-h3.md)
+- [Benchmark and evaluation instructions](../../eval/solar_renderer/README.md)
+- [SolarWM MiniMax-H3 camera-model guide](../solarwm/backends/minimax-h3.md)
