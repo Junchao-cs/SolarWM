@@ -13,10 +13,10 @@ The [paper](https://arxiv.org/abs/2610.28630),
 maintained by the SolarRenderer authors. Please cite both projects when using
 this integration; see [Citation](../../README.md#citation).
 
-The renderer documentation and integrations are adapted from SolarRenderer
-revision [`e018b0f673de865711fe99844d3976865722b8d0`](https://github.com/Enderfga/SolarRenderer/tree/e018b0f673de865711fe99844d3976865722b8d0).
 This guide is the end-to-end reference for the integrated `solarwm.renderer`
-entry points and the configurations in `configs/solar_renderer/`.
+entry points and the configurations in `configs/solar_renderer/`. The exact
+upstream revision and integration scope are recorded in
+[Upstream synchronization](#upstream-synchronization) at the end of this guide.
 
 ## Guide navigation
 
@@ -99,15 +99,19 @@ python -m solarwm.renderer \
   --seed 0
 ```
 
-The output is 158 frames at 24 fps, with a landscape canvas of 1344×768 or a
-portrait canvas of 768×1344. The default is four model evaluations. Keep that
-default when using the released four-step adapters.
+By default, the output is 158 frames at 24 fps (about 6.6 seconds), with a
+landscape canvas of 1344×768 or a portrait canvas of 768×1344. Add `--seconds`
+to request a different duration; see [Longer clips](inference.md#render-a-longer-clip).
+The default is four model evaluations. Keep that default when using the
+released four-step adapters. The two LoRA deltas are combined in float32 and
+merged into the base weights with a single conversion back to bfloat16.
 
 For your own inputs:
 
-- Supply a structure video covering at least 158 frames at 24 fps. Other frame
-  rates are resampled to 24 fps; longer videos use the beginning of the clip.
-  Inputs are fitted to the landscape or portrait canvas.
+- Supply a structure video covering at least 158 frames at 24 fps, and enough
+  frames for the duration requested with `--seconds`. Other frame rates are
+  resampled to 24 fps; rendering starts at the beginning of the clip. Inputs
+  are fitted to the landscape or portrait canvas.
 - Use a first frame whose layout and camera match the beginning of the
   structure video. Omit `--first` for structure-and-text conditioning.
 - Pass a UTF-8 text file to `--prompt`. Describe what the structure represents
@@ -196,7 +200,9 @@ python -m solarwm.renderer --causal \
 
 Each block contains at most five video latents. It attends to the prompt, the
 first frame, structure within a six-block window, and up to five preceding
-blocks of generated video. The command generates the same 158-frame clip and
+blocks of generated video. The default output is the same 158-frame clip.
+Add `--seconds 60` with a long enough structure video to request a minute; see
+the [duration and memory notes](inference.md#render-a-longer-clip). The command
 writes the completed MP4 after sampling and decoding.
 
 ## Prepare training data
@@ -370,3 +376,25 @@ corresponding to your completed run.
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data)
 - [Benchmark and evaluation instructions](../../eval/solar_renderer/README.md)
 - [SolarWM MiniMax-H3 camera-model guide](../solarwm/backends/minimax-h3.md)
+
+## Upstream synchronization
+
+This is the authoritative synchronization record for `docs/solar_renderer/`
+and the integrated renderer. The revision below is a pinned Git commit on
+`main`, not a release tag. Future updates should compare against this commit
+and preserve SolarWM's package layout and entry points.
+
+| Field | Synchronized version |
+|---|---|
+| Upstream repository | [Enderfga/SolarRenderer](https://github.com/Enderfga/SolarRenderer) |
+| Upstream branch | `main` |
+| Integrated commit | [`41e136e64b30d4aa0095070ce055ff00ae90fe3b`](https://github.com/Enderfga/SolarRenderer/commit/41e136e64b30d4aa0095070ce055ff00ae90fe3b) |
+| Synchronization date | 2026-10-23 |
+| Previous integration baseline | [`e018b0f673de865711fe99844d3976865722b8d0`](https://github.com/Enderfga/SolarRenderer/commit/e018b0f673de865711fe99844d3976865722b8d0) |
+| Changes integrated in this update | Explicit render duration (`--seconds`), combined float32 LoRA merge, long causal-rollout condition positions and audio handling, long-input VAE encoding, encoded-silence extension, and inference documentation. |
+| Existing integrations | ComfyUI, Reactor, evaluation tools, examples, and training guides from the previous baseline remain integrated; upstream did not change them in this update. |
+| SolarWM adaptation | Upstream `scripts/render.py` and `tools/omni_preencode.py` map to `src/solarwm/renderer/render.py` and `src/solarwm/renderer/preencode.py`. Causal and silence updates live in `src/solarwm/renderer/causal.py` and `src/solarwm/renderer/silence.py`, keeping shared MiniMax-H3 backend files unchanged. Reactor's optimization helpers support both the merged native model and the earlier PEFT-wrapped model. Documentation lives in `docs/solar_renderer/`; use `python -m solarwm.renderer` for rendering. |
+
+The separate [`data-engine/solar_renderer-data`](../../data-engine/README.md)
+submodule follows upstream's `data` branch and is pinned independently in the
+parent repository; this `main` synchronization record does not change its revision.

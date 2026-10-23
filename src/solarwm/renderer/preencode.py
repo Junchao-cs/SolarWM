@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
 import json
 import math
@@ -175,7 +176,7 @@ def open_media(path: str):
 def read_video(path: str, seconds: float = 0.0) -> tuple[np.ndarray, float]:
     """Decode a clip - only its first ``seconds`` when given.
 
-    H3 keeps 6.6 s of any clip, and OmniHuman alone holds 4K clips a thousand frames long: decoding
+    H3 keeps 6.6 s by default, and OmniHuman alone holds 4K clips a thousand frames long: decoding
     all of one to use its start kept one worker busy for most of a pass while its seven siblings,
     finished, held idle cards waiting for it.
     """
@@ -390,10 +391,98 @@ def reference(
     return MiniMaxH3VideoReference(frames=prepared(frames, fps, num_frames), fps=FPS)
 
 
-def build_pipelines(device: str):
+def _encode_condition_clipwise(vae, pixels, pixel_mean, pixel_std, encode_seed: int = 42):
+    """Normalize one temporal clip at a time, keeping the full uint8 condition on the host."""
+    from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
+    from diffusers.models.modeling_utils import get_parameter_dtype
+
+    device, dtype = pixels.device, get_parameter_dtype(vae.encoder)
+    clip = vae.config.clip_length
+    mean = torch.tensor(pixel_mean, device=device).view(1, -1, 1, 1, 1)
+    std = torch.tensor(pixel_std, device=device).view(1, -1, 1, 1, 1)
+    host = pixels.cpu()
+    if host.shape[2] % clip:
+        host = torch.cat([host, host[:, :, -1:].repeat(1, 1, (-host.shape[2]) % clip, 1, 1)], dim=2)
+    moments = torch.cat(
+        [
+            vae._encode_clip(
+                ((host[:, :, i : i + clip].to(device).float().div(255.0) - mean) / std)
+                .to(dtype)
+                .contiguous()
+            )
+            for i in range(0, host.shape[2], clip)
+        ],
+        dim=2,
+    )
+    if vae.config.token_drop > 0:
+        moments = moments[:, :, : -vae.config.token_drop]
+    latents = DiagonalGaussianDistribution(moments).sample(
+        generator=torch.Generator().manual_seed(encode_seed)
+    )
+    latents = latents.to(torch.float16).float().cpu()
+    latents_mean = torch.tensor(vae.config.latents_mean).view(1, -1, 1, 1, 1)
+    latents_std = torch.tensor(vae.config.latents_std).view(1, -1, 1, 1, 1)
+    return (latents - latents_mean) / latents_std
+
+
+def _install_long_video_support() -> None:
+    """Install idempotent dispatchers; only explicitly marked pipelines/VAEs opt in."""
+    from diffusers.models.autoencoders.autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
+    from diffusers.modular_pipelines.minimax_h3 import encoders
+    from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MiniMaxH3ModularPipeline
+
+    original_duration = MiniMaxH3ModularPipeline.max_duration.fget
+    if not getattr(original_duration, "_solar_renderer_long_video", False):
+
+        @functools.wraps(original_duration)
+        def max_duration(self):
+            limit = getattr(self, "_solar_renderer_max_seconds", None)
+            return original_duration(self) if limit is None else limit
+
+        max_duration._solar_renderer_long_video = True
+        MiniMaxH3ModularPipeline.max_duration = property(max_duration)
+
+    original_clip = AutoencoderKLMiniMaxH3._encode_clip
+    if not getattr(original_clip, "_solar_renderer_long_video", False):
+
+        @functools.wraps(original_clip)
+        def encode_clip(self, pixels):
+            if getattr(self, "_solar_renderer_long_video", False):
+                pixels = pixels.contiguous()
+            return original_clip(self, pixels)
+
+        encode_clip._solar_renderer_long_video = True
+        AutoencoderKLMiniMaxH3._encode_clip = encode_clip
+
+    original_condition = encoders.encode_vae_condition
+    if not getattr(original_condition, "_solar_renderer_long_video", False):
+
+        @functools.wraps(original_condition)
+        def encode_condition(vae, pixels, pixel_mean, pixel_std, encode_seed=42):
+            if getattr(vae, "_solar_renderer_long_video", False) and pixels.shape[2] > 1500:
+                return _encode_condition_clipwise(vae, pixels, pixel_mean, pixel_std, encode_seed)
+            return original_condition(vae, pixels, pixel_mean, pixel_std, encode_seed)
+
+        encode_condition._solar_renderer_long_video = True
+        encoders.encode_vae_condition = encode_condition
+
+
+def build_pipelines(device: str, *, max_seconds: float | None = None):
+    """Build independent encoder pipelines, optionally extending H3's 15-second limit.
+
+    ``OMNI_MAX_SECONDS`` remains supported when no explicit limit is supplied. Long-video
+    settings belong to these pipelines and their shared VAE, never to later default builds.
+    """
     from diffusers import ComponentsManager, ModularPipeline
     from diffusers.modular_pipelines import SequentialPipelineBlocks
 
+    limit = max_seconds if max_seconds is not None else os.environ.get("OMNI_MAX_SECONDS")
+    if limit is not None:
+        limit = float(limit)
+        if not math.isfinite(limit) or limit <= 0:
+            raise ValueError("max_seconds/OMNI_MAX_SECONDS must be finite and positive")
+        limit = max(15.0, limit)
+        _install_long_video_support()
     blocks = ModularPipeline.from_pretrained(ROOT).blocks
     manager = ComponentsManager()
     # Weights stay on the card. Offloading moved the text encoder over PCIe on every call, which
@@ -406,12 +495,17 @@ def build_pipelines(device: str):
 
     def chain(workflow: str, names: tuple[str, ...]):
         sub = blocks.get_workflow(workflow).sub_blocks
-        return SequentialPipelineBlocks.from_blocks_dict(
+        pipeline = SequentialPipelineBlocks.from_blocks_dict(
             {name: sub[name] for name in names}
         ).init_pipeline(ROOT, components_manager=manager)
+        if limit is not None:
+            pipeline._solar_renderer_max_seconds = limit
+        return pipeline
 
     conditioned = chain("ref2va", ("before_encode", "text_encoder", "vae_encoder"))
     conditioned.load_components(dtype=torch.bfloat16)
+    if limit is not None:
+        conditioned.vae._solar_renderer_long_video = True
     if not offload:
         for name in conditioned.pretrained_component_names:
             component = getattr(conditioned, name, None)
@@ -456,7 +550,7 @@ def encode(sample: dict, pipes, num_frames: int) -> tuple[dict, dict]:
     height, width = canvas(sample["target"], box)
     size = {"height": height, "width": width, "num_frames": num_frames}
     shape = (height, width)
-    # Where in the clip the sample starts, in seconds. The encoder keeps 6.6 s of a clip; a sample
+    # Where in the clip the sample starts, in seconds. The default window is 6.6 s; a sample
     # whose moment is later in a longer clip - a keyframe at 20 s of 22 - names where its stretch
     # begins, and the target, every observation on the clip's clock, the camera and the mask all
     # start there together. Free references are not on the clip's clock and are not moved.

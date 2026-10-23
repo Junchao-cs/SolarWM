@@ -1,7 +1,7 @@
 # SolarRenderer inference
 
 Adapted from the upstream [inference guide at revision
-`e018b0f`](https://github.com/Enderfga/SolarRenderer/blob/e018b0f673de865711fe99844d3976865722b8d0/docs/inference.md).
+`41e136e`](https://github.com/Enderfga/SolarRenderer/blob/41e136e64b30d4aa0095070ce055ff00ae90fe3b/docs/inference.md).
 The [integrated tutorial](README.md) is the end-to-end reference for SolarWM's
 renderer commands. Run the commands below from the repository root.
 
@@ -19,9 +19,10 @@ Use `python -m solarwm.renderer --help` to inspect the integrated CLI.
 ## Prepare inputs
 
 - `structure.mp4`: frame-aligned structure covering at least 158 frames at
-  24 fps, about 6.6 seconds. Other frame rates are resampled to 24 fps; longer
-  clips use their beginning. The input is fitted to a 1344×768 landscape canvas
-  or a 768×1344 portrait canvas.
+  24 fps, about 6.6 seconds, and enough frames for the duration requested with
+  `--seconds`. Other frame rates are resampled to 24 fps; rendering starts at
+  the beginning. The input is fitted to a 1344×768 landscape canvas or a
+  768×1344 portrait canvas.
 - `first.png`, optional: a first frame in the desired appearance, with the
   same camera, subjects, and layout as the start of the structure video.
 - `prompt.txt`: a UTF-8 prompt in the six-part training format. Name the
@@ -43,10 +44,14 @@ python -m solarwm.renderer \
   --out "$SOLAR_RENDERER_ROOT/render.mp4" --seed 0
 ```
 
-The output is a video-only MP4 with 158 frames at 24 fps. The default is four
-model evaluations; retain it for the released four-step adapters. Omit
+The default output is a video-only MP4 with 158 frames at 24 fps. The default
+is four model evaluations; retain it for the released four-step adapters. Omit
 `--first first.png` for structure-and-text conditioning. `--device cuda:0`
 selects the CUDA device; replace `0` when choosing another visible GPU.
+
+The control and four-step LoRA deltas are combined in float32, then merged
+into the base weights with a single conversion back to bfloat16. This applies
+to both adapter pairs and avoids rounding each adapter into the base separately.
 
 The upstream guide reports roughly four minutes for encoding and three and a
 half minutes for sampling on its single-GPU setup. These are upstream reference
@@ -77,9 +82,46 @@ preceding generated-video blocks. Four sampling steps produce a block before
 it is committed to the key/value cache. No block sees future structure or
 future generated video.
 
-The integrated command writes the completed 158-frame MP4 after sampling and
-decoding. It does not expose a live frame stream. The [Reactor integration](../../reactor/solar_renderer/README.md)
+The integrated command writes the completed MP4 after sampling and decoding;
+its default duration is 158 frames. It does not expose a live frame stream.
+The [Reactor integration](../../reactor/solar_renderer/README.md)
 documents its own interactive interface.
+
+## Render a longer clip
+
+Use `--seconds` with either adapter pair to request a longer output. For
+example, with a structure video covering at least a minute:
+
+```bash
+python -m solarwm.renderer --causal \
+  --h3 "$H3_ROOT" \
+  --control "$RENDERER_WEIGHTS/solarrenderer_causal_control_lora.safetensors" \
+  --fewstep "$RENDERER_WEIGHTS/solarrenderer_causal_4step_lora.safetensors" \
+  --structure structure.mp4 --first first.png --prompt prompt.txt \
+  --out "$SOLAR_RENDERER_ROOT/render-causal-60s.mp4" --seconds 60 --seed 0
+```
+
+Write the prompt for the whole clip. Omitting `--seconds`, or setting it to
+`0`, retains the trained 158-frame default. A positive duration is rounded to
+an output frame count at 24 fps. Encoding uses H3's `17n + 5` frame lengths
+with a minimum of 158 frames, then trims the decoded result. The output is
+limited by the structure video's available aligned frames, so it can be
+slightly shorter than requested near the end of the source. The structure
+video must still cover at least 158 frames for a shorter requested output.
+
+The bidirectional pair samples all frames together, so its attention memory
+and runtime increase with clip length. The causal pair uses a bounded
+attention window and advances block by block. For blocks beyond the training
+clip, the prompt, first-frame, and audio condition positions shift by whole
+five-latent steps to retain the trained relative-position range. Whole-clip
+inputs, generated latents, and final decoding still consume memory as the
+clip grows; available memory can limit the duration in either mode.
+
+For long inputs, encoding handles VAE clips contiguously and normalizes
+visual conditions clip by clip above 1,500 frames, reducing large temporary
+GPU allocations. The silent audio conditioning is extended from the packaged
+encoded-silence artifact; the exported MP4 remains video-only. These changes
+do not provide live playback from this command.
 
 ## Related workflows
 
@@ -87,3 +129,6 @@ documents its own interactive interface.
 - [ComfyUI integration](../../comfyui/solar_renderer/README.md): use the renderer through nodes.
 - [Training](training.md): create and export your own adapter pair.
 - [Prompts and first frames](prompts.md): caption and first-frame preparation.
+
+For the integrated upstream commit, date, and adaptation scope, see
+[Upstream synchronization](README.md#upstream-synchronization).

@@ -19,6 +19,15 @@ Third-party source included in this repository
     comfyui/solar_renderer/, reactor/solar_renderer/, eval/solar_renderer/,
     and docs/solar_renderer/. Runtime imports, asset paths, deployment inputs,
     and documentation commands are modified for the integrated SolarWM layout.
+    Long-video rendering, combined LoRA merging, causal condition positioning,
+    long-input encoding, and encoded-silence extension are updated through
+    revision 41e136e64b30d4aa0095070ce055ff00ae90fe3b (main, 2026-10-23).
+    These updates are adapted under src/solarwm/renderer/ in render.py,
+    causal.py, preencode.py, and silence.py, with docs/solar_renderer/ updates.
+    Renderer-specific causal and silence changes are isolated from the shared
+    MiniMax-H3 backend. See docs/solar_renderer/README.md for the sync record.
+    Reactor optimization helpers also accept the merged native model as well
+    as the earlier PEFT-wrapped model in this SolarWM adaptation.
     MiniMax-H3 and SolarRenderer model weights are obtained separately and
     remain subject to the MiniMax H3 Community License and Acceptable Use Policy.
 

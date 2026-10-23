@@ -60,6 +60,10 @@ class SmallCausalCore(H3OmniCausalMixin):
     def _audio(self, frames, generator):
         return torch.randn(1, 4, 4, generator=generator)
 
+    @staticmethod
+    def audio_latents(frames):
+        return 2  # Two rows per channel in this small document.
+
     def _broadcast_logical_sample(self, value):
         pass
 
@@ -129,6 +133,98 @@ def test_static_prefix_preserves_native_causal_conditioning(reactor_modules, ref
         actual = torch.cat([run.step() for _ in range(10)], dim=2)
     torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
     assert ("prefix", 0) in run.cache.layers[0]
+
+
+@pytest.mark.parametrize("wrapped", [False, True], ids=["merged-native", "legacy-peft"])
+def test_text_refiner_cache_accepts_both_renderer_models(reactor_modules, wrapped):
+    original = torch.nn.Linear(2, 2, bias=False)
+    model = SimpleNamespace(token_refiner=original)
+    core = SimpleNamespace(
+        model=SimpleNamespace(get_base_model=lambda: model) if wrapped else model
+    )
+    value = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]])
+    with torch.no_grad():
+        expected = original(value)
+        changed_expected = original(value + 1)
+    calls = []
+    original.register_forward_hook(lambda *args: calls.append(1))
+
+    reactor_modules.optimizations.cache_text_refiner(core)
+    with torch.no_grad():
+        first = model.token_refiner(value)
+        repeated = model.token_refiner(value.clone())
+        torch.testing.assert_close(first, expected)
+        assert repeated is first
+        assert len(calls) == 1
+        torch.testing.assert_close(model.token_refiner(value + 1), changed_expected)
+        assert len(calls) == 2
+    with torch.enable_grad():
+        uncached = model.token_refiner(value)
+        assert uncached.requires_grad
+        assert len(calls) == 3
+
+
+@pytest.mark.parametrize("wrapped", [False, True], ids=["merged-native", "legacy-peft"])
+def test_adaln_precomputation_accepts_both_renderer_models(reactor_modules, monkeypatch, wrapped):
+    from solarwm.renderer.causal import CLEAN_LEVEL, STATIC_TIME
+
+    # Only the parameter-dtype helper is needed; the real H3 model would import GPU dependencies.
+    monkeypatch.setitem(
+        sys.modules,
+        "solarwm.backends.minimax_h3.model",
+        SimpleNamespace(get_parameter_dtype=lambda model: next(model.parameters()).dtype),
+    )
+
+    class Projection(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor([2.0, 3.0]))
+
+        def forward(self, embedding):
+            return embedding * self.weight[0], embedding * self.weight[1]
+
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            block = torch.nn.Module()
+            block.adaln_proj = Projection()
+            self.transformer_blocks = torch.nn.ModuleList([block])
+
+        def _time_condition(self, times, _target, *, parameter_dtype):
+            return times.to(parameter_dtype(self))[:, None]
+
+    model = Model()
+    projection = model.transformer_blocks[0].adaln_proj
+    core = SimpleNamespace(
+        model=SimpleNamespace(get_base_model=lambda: model) if wrapped else model,
+        device=torch.device("cpu"),
+    )
+
+    def run(*, times):
+        # Model weights are gone after precomputation, but the native embeddings retain FP32.
+        embedding = torch.tensor(times, dtype=torch.float32).unique(sorted=True)[:, None]
+        return model.transformer_blocks[0].adaln_proj(embedding)
+
+    core._run = run
+    schedule = make_shifted_schedule(5, shift=12.0)
+    time_sets = [[STATIC_TIME], [CLEAN_LEVEL]]
+    for level in [CLEAN_LEVEL, *(1 - float(s) for s in schedule.sigmas[:4])]:
+        time_sets.extend(([STATIC_TIME, CLEAN_LEVEL, level], [CLEAN_LEVEL, level]))
+    time_sets = [torch.tensor(times, dtype=torch.float32).numpy() for times in time_sets]
+    with torch.no_grad():
+        expected = [tuple(t.clone() for t in run(times=times)) for times in time_sets]
+    result = reactor_modules.optimizations.precompute_adaln(core)
+    assert result["adaln_weight_bytes_removed"] == projection.weight.numel() * 4
+    assert isinstance(
+        model.transformer_blocks[0].adaln_proj, reactor_modules.optimizations.ModulationTable
+    )
+    with torch.no_grad():
+        for times, target in zip(time_sets, expected, strict=True):
+            actual = core._run(times=times)
+            for value, reference in zip(actual, target, strict=True):
+                torch.testing.assert_close(value, reference, rtol=0, atol=0)
+        with pytest.raises(ValueError, match="Unprepared timestep set"):
+            core._run(times=[0.12345])
 
 
 def test_fa4_targets_the_integrated_model_attention_entrypoint(reactor_modules, monkeypatch):

@@ -199,3 +199,6 @@ corresponding to your completed run.
 - [Prompts and first frames](prompts.md): prepare the conditioning text and appearance reference.
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data).
 - [Benchmark and evaluation](../../eval/solar_renderer/README.md).
+
+For the integrated upstream commit, date, and adaptation scope, see
+[Upstream synchronization](README.md#upstream-synchronization).

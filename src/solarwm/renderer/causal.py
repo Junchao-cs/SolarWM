@@ -47,6 +47,7 @@ from solarwm.backends.minimax_h3.segmented_attention import (
 
 STATIC_TIME = 1.0
 CLEAN_LEVEL = 0.999
+TRAIN_LATENTS = 47  # 158 pixel frames; later chunks reuse the trained relative positions.
 
 
 def _merge(spans: list[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
@@ -517,6 +518,16 @@ class H3OmniCausalMixin:
         window = int(window or self.causal.get("window", 6))
         prompt, layout, observation_rows, rows, (frames, grid) = self._document(batch, generator)
         audio = self._audio(frames, generator)
+        # Beyond the training clip, keep its audio horizon and move the prompt, first
+        # frame and audio with each later chunk by whole five-latent steps.
+        shifts, audio_keep = self._frozen_positions(layout, rows, frames)
+        if any(shifts) and cache_structure and rows.structure:
+            raise ValueError(
+                "a stream past the training length recomputes its structure window "
+                "(cache_structure=False)"
+            )
+        audio = audio.index_select(1, torch.from_numpy(audio_keep - rows.audio[0]).to(self.device))
+        audio_keep = audio_keep.astype(np.int64)
         cache = H3ChunkKVCache(window=window)
         source = layout.source
         n_cond = int(source.num_condition_video_rows)
@@ -532,14 +543,15 @@ class H3OmniCausalMixin:
             return value
 
         def sub_document(
-            target: tuple[int, int], extra: list = ()
-        ) -> tuple[Any, np.ndarray, list, tuple[int, int], Any]:
+            target: tuple[int, int], extra: list = (), shift: float = 0.0
+        ) -> tuple[Any, np.ndarray, list, tuple[int, int], Any, tuple[int, int]]:
             """The rows a stream recomputes for one forward: the static rows, the
             audio, ``extra`` (the structure window
             when it is not cached) and ``target`` (a structure or target chunk) -
-            everything else comes from the cache."""
-            spans = sorted([*rows.static, rows.audio, *extra, target])
-            keep = np.concatenate([np.arange(a, b) for a, b in spans])
+            everything else comes from the cache. Static rows and audio sit ``shift``
+            later in time; the selected audio span is returned last."""
+            spans = sorted([*rows.static, *extra, target])
+            keep = np.sort(np.concatenate([*(np.arange(a, b) for a, b in spans), audio_keep]))
             where = np.full(rows.sequence_length, -1, dtype=np.int64)
             where[keep] = np.arange(keep.size)
             kept_video = np.asarray(
@@ -551,7 +563,14 @@ class H3OmniCausalMixin:
             times = np.full(int(keep.size), CLEAN_LEVEL, dtype=np.float32)
             text = _remap(rows.text, where)
             times[text[0] : text[1]] = STATIC_TIME
-            return (select_rows(layout, keep), where, pick, _remap(target, where), times)
+            arrays = select_rows(layout, keep)
+            heard = (int(where[audio_keep[0]]), int(where[audio_keep[-1]]) + 1)
+            if shift:
+                positions = arrays["position_ids"].clone()
+                for a, b in [*(_remap(s, where) for s in rows.static), heard]:
+                    positions[a:b, 0] += shift
+                arrays["position_ids"] = positions
+            return (arrays, where, pick, _remap(target, where), times, heard)
 
         def plan_for(
             where: np.ndarray,
@@ -561,9 +580,10 @@ class H3OmniCausalMixin:
             cached: tuple,
             commit: Any,
             extra: list = (),
+            *,
+            audio: tuple[int, int],
         ) -> H3SegmentPlan:
             static = [_remap(s, where) for s in rows.static]
-            audio = _remap(rows.audio, where)
             pieces = [(span, static) for span in static] + [(audio, [*static, audio])]
             pieces += [(_remap(e, where), [*static, _remap(e, where)]) for e in extra]
             segments = [(a, b, _merge(k), (), None) for (a, b), k in sorted(pieces) if b > a]
@@ -581,7 +601,7 @@ class H3OmniCausalMixin:
                 else [rows.structure[j] for j in _window(c, window)]
             )
             if rows.structure and cache_structure:
-                arrays, where, pick, mine, times = sub_document(rows.structure[c])
+                arrays, where, pick, mine, times, heard = sub_document(rows.structure[c])
                 with torch.no_grad():
                     self._run(
                         video_rows=observation_rows.index_select(1, pick),
@@ -589,12 +609,14 @@ class H3OmniCausalMixin:
                         prompt=prompt,
                         arrays=arrays,
                         times=times,
-                        plan=plan_for(where, mine, len(times), [], (), ("structure", c)),
+                        plan=plan_for(
+                            where, mine, len(times), [], (), ("structure", c), audio=heard
+                        ),
                         model=model,
                     )
-            arrays, where, pick, mine, times = sub_document(rows.target[c], extra)
+            arrays, where, pick, mine, times, heard = sub_document(rows.target[c], extra, shifts[c])
             condition = observation_rows.index_select(1, pick)
-            audio_span = [_remap(rows.audio, where), *(_remap(e, where) for e in extra)]
+            audio_span = [heard, *(_remap(e, where) for e in extra)]
             shape = (1, 24, f1 - f0, *grid)
             current = draw(shape)
             for index in range(evaluations):
@@ -609,7 +631,9 @@ class H3OmniCausalMixin:
                     prompt=prompt,
                     arrays=arrays,
                     times=times.copy(),
-                    plan=plan_for(where, mine, len(times), audio_span, history, None, extra),
+                    plan=plan_for(
+                        where, mine, len(times), audio_span, history, None, extra, audio=heard
+                    ),
                     model=model,
                 )
                 velocity = unpatchify_video(
@@ -649,11 +673,50 @@ class H3OmniCausalMixin:
                     arrays=arrays,
                     times=times.copy(),
                     plan=plan_for(
-                        where, mine, len(times), audio_span, history, ("clean", c), extra
+                        where,
+                        mine,
+                        len(times),
+                        audio_span,
+                        history,
+                        ("clean", c),
+                        extra,
+                        audio=heard,
                     ),
                     model=model,
                 )
         return (clip, last_inputs, last_times, jitters)
+
+    def _frozen_positions(
+        self, layout: Any, rows: H3CausalRows, frames: int
+    ) -> tuple[list[float], np.ndarray]:
+        """Move static conditions with later chunks; retain each channel's trained audio span.
+
+        Within the 47-latent training clip, all positions and audio rows stay unchanged.
+        Later chunks reuse a trained chunk's relative positions in whole five-latent steps.
+        """
+        train = TRAIN_LATENTS
+        chunk = int(self.causal.get("chunk", 5))
+        per = self.audio_latents(frames)
+        size = rows.audio[1] - rows.audio[0]
+        heard = min(per, self.audio_latents(train)) if frames > train else per
+        audio_keep = np.concatenate(
+            [rows.audio[0] + k * per + np.arange(heard) for k in range(size // per)]
+        )
+        trained = chunk_frames(train, chunk)
+        last = max(i for i, (a, b) in enumerate(trained) if b - a == chunk)
+        starts = [float(layout.position_ids[a, 0]) for a, _b in rows.target]
+        shifts = []
+        for c in range(rows.chunks):
+            if frames <= train or c <= last:
+                shifts.append(0.0)
+                continue
+            match = [i for i in range(last + 1) if ((c - i) * chunk) % 5 == 0]
+            if not match:
+                raise ValueError(
+                    f"no trained chunk lies a whole number of 5-latent steps behind chunk {c}"
+                )
+            shifts.append(starts[c] - starts[max(match)])
+        return shifts, audio_keep
 
 
 def _core_class() -> type:

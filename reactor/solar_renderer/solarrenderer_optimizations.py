@@ -35,8 +35,14 @@ class ExactInputCache(nn.Module):
         return self.saved_output
 
 
+def _transformer(core):
+    """Support merged native weights and the earlier PEFT-wrapped renderer."""
+    unwrap = getattr(core.model, "get_base_model", None)
+    return unwrap() if callable(unwrap) else core.model
+
+
 def cache_text_refiner(core):
-    model = core.model.get_base_model()
+    model = _transformer(core)
     model.token_refiner = ExactInputCache(model.token_refiner)
 
 
@@ -58,7 +64,7 @@ def precompute_adaln(core):
     from solarwm.backends.minimax_h3.model import get_parameter_dtype
     from solarwm.renderer.causal import CLEAN_LEVEL, STATIC_TIME
 
-    model = core.model.get_base_model()
+    model = _transformer(core)
     schedule = make_shifted_schedule(5, shift=12.0)
     # A reference-free static prefill contains text rows only (all STATIC_TIME).
     keys = [(float(np.float32(STATIC_TIME)),)]

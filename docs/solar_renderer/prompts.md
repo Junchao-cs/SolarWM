@@ -79,3 +79,6 @@ passing the result as `--first first.png` to the [renderer](inference.md).
 
 To restyle a clip, keep its structure video, write a prompt for the new
 appearance, and make a matching first frame using the same layout.
+
+For the integrated upstream commit, date, and adaptation scope, see
+[Upstream synchronization](README.md#upstream-synchronization).
