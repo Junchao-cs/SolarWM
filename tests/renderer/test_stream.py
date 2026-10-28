@@ -6,16 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.errors import DataContractError
-from solarwm.renderer.data import H3OmniStream
+from solar.errors import DataContractError
+from solar.renderer.data import H3OmniStream
 
 CONTRACT = (
-    Path(__file__).resolve().parents[2]
-    / "src"
-    / "solarwm"
-    / "renderer"
-    / "assets"
-    / "encoder_contract.json"
+    Path(__file__).resolve().parents[2] / "solar" / "renderer" / "assets" / "encoder_contract.json"
 )
 
 

@@ -6,9 +6,9 @@ import pytest
 import torch
 from safetensors.torch import save_file
 
-from solarwm.errors import DataContractError
-from solarwm.renderer.data import H3OmniReader
-from solarwm.renderer.render import lora_pairs
+from solar.errors import DataContractError
+from solar.renderer.data import H3OmniReader
+from solar.renderer.render import lora_pairs
 
 
 def sample(path, *, frames=(0, 1), degree=0.999, bad_observation=False):

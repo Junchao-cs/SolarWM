@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from solarwm.backends.minimax_h3.flow import (
+from solar.backends.minimax_h3.flow import (
     data_velocity_target,
     euler_step,
     make_shifted_schedule,
@@ -11,7 +11,7 @@ from solarwm.backends.minimax_h3.flow import (
     sample_shifted_timestep,
     scale_noise,
 )
-from solarwm.backends.minimax_h3.geometry import (
+from solar.backends.minimax_h3.geometry import (
     STABLE_STAGE0P5_GEOMETRY,
     align_pixel_frames,
     audio_latents_for_video,

@@ -22,7 +22,7 @@ checkpoints/
 *.pt
 *.pth
 *.safetensors
-!src/solarwm/renderer/assets/h3_silence_153_158_170.safetensors
+!solar/renderer/assets/h3_silence_153_158_170.safetensors
 *.tar
 *.tar.gz
 *.part

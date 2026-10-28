@@ -7,10 +7,10 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from solarwm.realtime_interaction.solarwm_web.configure import configure
-from solarwm.realtime_interaction.solarwm_web.runtime.configuration import load_config, load_scenes
-from solarwm.realtime_interaction.solarwm_web.runtime.state import State
-from solarwm.realtime_interaction.solarwm_web.server import serve
+from deploy.solar_wm.solarwm_web.configure import configure
+from deploy.solar_wm.solarwm_web.runtime.configuration import load_config, load_scenes
+from deploy.solar_wm.solarwm_web.runtime.state import State
+from deploy.solar_wm.solarwm_web.server import serve
 
 
 @pytest.fixture(params=[False, True], ids=["original-only", "with-streamrender"])

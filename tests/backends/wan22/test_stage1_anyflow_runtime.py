@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 def test_negative_embedding_loader_validates_the_real_tensor_payload(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.stage1_anyflow import (
+    from solar.backends.wan22.runtime.stage1_anyflow import (
         load_negative_prompt_embedding,
     )
 
@@ -38,9 +38,9 @@ def test_negative_embedding_loader_validates_the_real_tensor_payload(tmp_path: P
 
 def test_anyflow_v1_5_uses_exact_five_forward_graph_and_anchor_mask() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.anyflow import bounded_difference_timesteps
-    from solarwm.backends.wan22.runtime.scheduler import FlowMatchScheduler
-    from solarwm.backends.wan22.runtime.stage1_anyflow import (
+    from solar.backends.wan22.anyflow import bounded_difference_timesteps
+    from solar.backends.wan22.runtime.scheduler import FlowMatchScheduler
+    from solar.backends.wan22.runtime.stage1_anyflow import (
         anyflow_v15_objective,
     )
 
@@ -104,8 +104,8 @@ def test_anyflow_v1_5_uses_exact_five_forward_graph_and_anchor_mask() -> None:
 
 def test_anyflow_v1_5_unguided_path_uses_four_forwards() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.scheduler import FlowMatchScheduler
-    from solarwm.backends.wan22.runtime.stage1_anyflow import (
+    from solar.backends.wan22.runtime.scheduler import FlowMatchScheduler
+    from solar.backends.wan22.runtime.stage1_anyflow import (
         anyflow_v15_objective,
     )
 
@@ -140,8 +140,8 @@ def test_anyflow_v1_5_unguided_path_uses_four_forwards() -> None:
 
 def test_anyflow_v1_5_default_noise_preserves_clean_stride_rng_order() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.scheduler import FlowMatchScheduler
-    from solarwm.backends.wan22.runtime.stage1_anyflow import anyflow_v15_objective
+    from solar.backends.wan22.runtime.scheduler import FlowMatchScheduler
+    from solar.backends.wan22.runtime.stage1_anyflow import anyflow_v15_objective
 
     clean = torch.zeros((1, 3, 2, 2, 2)).permute(0, 2, 1, 3, 4)
     assert not clean.is_contiguous()
@@ -172,7 +172,7 @@ def test_anyflow_v1_5_default_noise_preserves_clean_stride_rng_order() -> None:
 
 def test_anyflow_adaptive_rescale_matches_global_diffusion_mean() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.stage1_anyflow import (
+    from solar.backends.wan22.runtime.stage1_anyflow import (
         adaptive_rescale_non_diffusion_losses,
     )
 
@@ -197,7 +197,7 @@ def test_anyflow_adaptive_rescale_matches_global_diffusion_mean() -> None:
 
 def test_fm_to_anyflow_upgrade_initializes_exactly_four_delta_tensors() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.checkpoint import (
+    from solar.backends.wan22.runtime.checkpoint import (
         _load_stage0p5_state_into_anyflow,
     )
 
@@ -238,7 +238,7 @@ def test_fm_to_anyflow_upgrade_initializes_exactly_four_delta_tensors() -> None:
 
 def test_teacher_forcing_adapter_propagates_anyflow_r_and_aug_r() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanDiffusion
+    from solar.backends.wan22.runtime.components import WanDiffusion
 
     seen: dict[str, object] = {}
 

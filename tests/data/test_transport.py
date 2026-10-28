@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.data.archive import RawSampleReader, TarShardReader
-from solarwm.data.index import IndexRow
-from solarwm.data.sampling import SamplePlan
-from solarwm.data.transport import (
+from solar.data.archive import RawSampleReader, TarShardReader
+from solar.data.index import IndexRow
+from solar.data.sampling import SamplePlan
+from solar.data.transport import (
     GCSDownloadTimeout,
     GCSResolver,
     GCSRestDownloader,
     LocalResolver,
     join_root,
 )
-from solarwm.errors import DataContractError
+from solar.errors import DataContractError
 
 
 def _md5(value: bytes) -> str:
@@ -65,7 +65,7 @@ def test_gcs_rest_download_uses_current_object_path(
         urls.append(request.full_url)
         return io.BytesIO(b"payload")
 
-    monkeypatch.setattr("solarwm.data.transport.urllib.request.urlopen", open_url)
+    monkeypatch.setattr("solar.data.transport.urllib.request.urlopen", open_url)
     output = io.BytesIO()
     downloader = GCSRestDownloader(token=lambda: "token", max_attempts=1)
 
@@ -92,8 +92,8 @@ def test_gcs_rest_download_has_a_total_time_limit(
         assert timeout == 1.0
         return SlowResponse()
 
-    monkeypatch.setattr("solarwm.data.transport.time.monotonic", lambda: now[0])
-    monkeypatch.setattr("solarwm.data.transport.urllib.request.urlopen", open_url)
+    monkeypatch.setattr("solar.data.transport.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("solar.data.transport.urllib.request.urlopen", open_url)
     downloader = GCSRestDownloader(
         token=lambda: "token",
         max_elapsed_seconds=1.0,
@@ -118,7 +118,7 @@ def test_gcs_rest_download_classifies_transient_retry_exhaustion_as_timeout(
     error: Exception,
 ) -> None:
     monkeypatch.setattr(
-        "solarwm.data.transport.urllib.request.urlopen",
+        "solar.data.transport.urllib.request.urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(error),
     )
     downloader = GCSRestDownloader(token=lambda: "token", max_attempts=1)
@@ -558,7 +558,7 @@ def test_gcs_timeout_retry_recovers_after_cooldown(
             output.write(payload)
             return len(payload)
 
-    monkeypatch.setattr("solarwm.data.transport.time.time", lambda: now[0])
+    monkeypatch.setattr("solar.data.transport.time.time", lambda: now[0])
     downloader = RecoveringDownloader()
     resolver = GCSResolver(
         root="gs://example-root",
@@ -674,10 +674,10 @@ def test_gcs_resolve_uses_one_deadline_for_lock_wait_and_download(
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         now[0] = 0.8
 
-    monkeypatch.setattr("solarwm.data.transport.time.monotonic", lambda: now[0])
-    monkeypatch.setattr("solarwm.data.transport._acquire_flock", delayed_lock)
+    monkeypatch.setattr("solar.data.transport.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("solar.data.transport._acquire_flock", delayed_lock)
     monkeypatch.setattr(
-        "solarwm.data.transport.urllib.request.urlopen",
+        "solar.data.transport.urllib.request.urlopen",
         lambda *_args, **_kwargs: SlowResponse(),
     )
     resolver = GCSResolver(

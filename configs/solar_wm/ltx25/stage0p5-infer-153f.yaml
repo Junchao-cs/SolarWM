@@ -1,0 +1,89 @@
+schema: solarwm.run.v1
+action: infer
+name: ltx25-stage0p5-infer-153f
+
+model:
+  family: ltx25_video
+  architecture: ltx-2.5-22b-dev-video-only
+  checkpoint_path: /path/to/models/LTX-2.5/diffusion_models/ltx-2.5-22b-dev-transformer-bf16.safetensors
+  adapter_checkpoint_path: /path/to/SolarWM-ltx-22B-bid-stage0p5-153f
+  adapter_checkpoint_format: inference_transaction_v1
+  adapter_weights: ema
+  training_mode: lora
+  torch_dtype: bfloat16
+  load_conditioners: false
+  audio_enabled: false
+  camera_attention_mode: fused_prope
+  camera_translation_transform: linear
+  camera_intrinsics_mode: wan_fixed
+  model_fps: 24.0
+  latent_channels: 128
+  latent_height: 16
+  latent_width: 24
+  caption_cache_stage: gemma4_feature_extractor_preconnector
+  attention_backend: cudnn
+  adapter:
+    type: lora
+    target: block_qkvo_ffn
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+    bias: none
+    dtype: bfloat16
+    init_lora_weights: true
+  codec:
+    video_vae_path: /path/to/models/LTX-2.5/vae/ltx-2.5-video-vae-bf16.safetensors
+
+data:
+  input_mode: preencoded
+  generation: ltx-153f-h512-w768
+  format: webdataset
+  transport:
+    kind: local
+    root: /path/to/SolarWM-Data/releases-v1
+  index_root: /path/to/SolarWM-Data/releases-v1
+  index: recipes/clean-153f/latent-wds/ltx-153f-h512-w768/test-index.jsonl.gz
+  completion_marker: release.json
+  reader_contract: ltx25.v1
+  artifact_version: solarwm_ltx25_video_153f_h512_w768_v1
+  pixel_frames: 153
+  encoded_latents: 20
+  height: 512
+  width: 768
+  latent_channels: 128
+  latent_height: 16
+  latent_width: 24
+  frame_sampling: contiguous
+  source_fps_policy: provenance_only
+  random_start: false
+  max_rel_translation: 20.0
+  max_camera_abs: 20.0
+
+distributed:
+  world_size: 2
+  local_world_size: 2
+  sequence_parallel_size: 2
+  rank_partition: global_occurrence
+
+train:
+  stage: stage0p5
+  causal_mode: bidirectional
+  objective: native_rectified_flow
+
+inference:
+  sample_count: 16
+  selection_seed: 42
+  negative_caption_cache: /path/to/assets/ltx25-negative-caption.safetensors
+  num_inference_steps: 30
+  seed: 10
+  fps: 24
+  decoder_mode: diffvae_chunked_eager
+  guidance:
+    cfg_scale: 3.0
+    stg_scale: 1.0
+    rescale_scale: 0.7
+    stg_blocks: [28]
+
+runtime:
+  output_dir: outputs/ltx25-stage0p5-infer-153f
+  provider_entrypoint: solar.backends.ltx25.official:create_provider

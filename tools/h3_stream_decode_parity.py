@@ -6,7 +6,7 @@ import json
 import torch
 from diffusers import AutoencoderKLMiniMaxH3
 
-from solarwm.backends.minimax_h3.stream_decode import decoded_chunks
+from solar.backends.minimax_h3.stream_decode import decoded_chunks
 
 
 def main():

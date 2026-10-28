@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import torch
 
-from solarwm.backends.minimax_h3.official_codec import OfficialH3Codec
+from solar.backends.minimax_h3.official_codec import OfficialH3Codec
 
 
 class _Posterior:

@@ -34,7 +34,7 @@ Run commands from the SolarWM repository root after installing the separate
 The latter defines `H3_ROOT` and `RENDERER_WEIGHTS` for the render command below.
 This directory
 is adapted from [SolarRenderer revision e018b0f](https://github.com/Enderfga/SolarRenderer/tree/e018b0f673de865711fe99844d3976865722b8d0/eval).
-It uses the integrated `solarwm.renderer` runtime. Model caches default to
+It uses the integrated `solar.renderer` runtime. Model caches default to
 `eval_models/solar_renderer/`; set `SOLAR_EVAL_MODELS` to override this location.
 Install `ffmpeg` and `ffprobe` before scoring.
 

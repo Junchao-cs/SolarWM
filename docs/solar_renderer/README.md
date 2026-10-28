@@ -13,7 +13,7 @@ The [paper](https://arxiv.org/abs/2610.28630),
 maintained by the SolarRenderer authors. Please cite both projects when using
 this integration; see [Citation](../../README.md#citation).
 
-This guide is the end-to-end reference for the integrated `solarwm.renderer`
+This guide is the end-to-end reference for the integrated `solar.renderer`
 entry points and the configurations in `configs/solar_renderer/`. The exact
 upstream revision and integration scope are recorded in
 [Upstream synchronization](#upstream-synchronization) at the end of this guide.
@@ -23,10 +23,10 @@ upstream revision and integration scope are recorded in
 - [Inference](inference.md): inputs, bidirectional rendering, and causal rendering.
 - [Prompts and first frames](prompts.md): the six-part caption format and image helpers.
 - [Training](training.md): encoding, the four adapter stages, and exporting weights.
-- [ComfyUI integration](../../comfyui/solar_renderer/README.md).
-- [Reactor integration](../../reactor/solar_renderer/README.md).
+- [ComfyUI integration](../../deploy/solar_renderer/comfyui/README.md).
+- [Reactor integration](../../deploy/solar_renderer/reactor/README.md).
 - [Benchmark and evaluation](../../eval/solar_renderer/README.md).
-- [SolarWM camera-model guides](../solarwm/README.md).
+- [SolarWM camera-model guides](../solar_wm/README.md).
 
 ## Install
 
@@ -46,7 +46,7 @@ python -m pip install torch==2.8.0 torchvision==0.23.0 \
   --index-url https://download.pytorch.org/whl/cu128
 python -m pip install -e ".[renderer]"
 python -m pip install --no-build-isolation flash-attn==2.7.4.post1
-python -m solarwm.renderer --help
+python -m solar.renderer --help
 ```
 
 Inference uses one CUDA GPU. The text encoder is released before the video
@@ -69,7 +69,7 @@ export H3_ROOT="$SOLAR_RENDERER_ROOT/MiniMax-H3"
 export RENDERER_WEIGHTS="$SOLAR_RENDERER_ROOT/weights"
 mkdir -p "$RENDERER_WEIGHTS"
 
-python -m solarwm.renderer.prepare_h3 --dir "$H3_ROOT"
+python -m solar.renderer.prepare_h3 --dir "$H3_ROOT"
 hf download Enderfga/SolarRenderer \
   solarrenderer_control_lora.safetensors \
   solarrenderer_4step_lora.safetensors \
@@ -88,7 +88,7 @@ The [synthwave highway example](../../examples/solar_renderer/sem-highway_synthw
 contains a semantic structure video, a first frame, and a six-part prompt:
 
 ```bash
-python -m solarwm.renderer \
+python -m solar.renderer \
   --h3 "$H3_ROOT" \
   --control "$RENDERER_WEIGHTS/solarrenderer_control_lora.safetensors" \
   --fewstep "$RENDERER_WEIGHTS/solarrenderer_4step_lora.safetensors" \
@@ -187,7 +187,7 @@ hf download Enderfga/SolarRenderer \
   solarrenderer_causal_4step_lora.safetensors \
   --local-dir "$RENDERER_WEIGHTS"
 
-python -m solarwm.renderer --causal \
+python -m solar.renderer --causal \
   --h3 "$H3_ROOT" \
   --control "$RENDERER_WEIGHTS/solarrenderer_causal_control_lora.safetensors" \
   --fewstep "$RENDERER_WEIGHTS/solarrenderer_causal_4step_lora.safetensors" \
@@ -215,7 +215,7 @@ export RENDERER_RUNS="$SOLAR_RENDERER_ROOT/runs"
 
 hf download Enderfga/SolarRenderer-Data --repo-type dataset \
   --include "train/*" --local-dir "$RENDERER_DATA/SolarRenderer-Data"
-python -m solarwm.renderer.hf_samples \
+python -m solar.renderer.hf_samples \
   --data "$RENDERER_DATA/SolarRenderer-Data" \
   --out "$RENDERER_DATA/samples"
 ```
@@ -234,7 +234,7 @@ one worker per GPU:
 
 ```bash
 H3_REF_ROOT="$H3_ROOT" torchrun --standalone --nproc-per-node=8 \
-  -m solarwm.renderer.preencode \
+  -m solar.renderer.preencode \
   --samples "$RENDERER_DATA/samples/samples.jsonl" \
   --out "$RENDERER_DATA/encoded"
 cat "$RENDERER_DATA"/encoded/index.*.jsonl \
@@ -268,7 +268,7 @@ are rejected before loading the model.
 Inspect a recipe without starting training:
 
 ```bash
-python -m solarwm.renderer.training \
+python -m solar.renderer.training \
   --config configs/solar_renderer/control_lora.yaml --resolve
 ```
 
@@ -278,7 +278,7 @@ the shared model and data paths for each stage:
 ```bash
 renderer_train() {
   torchrun --standalone --nproc-per-node=8 \
-    -m solarwm.renderer.training \
+    -m solar.renderer.training \
     --set model.checkpoint_path="$H3_ROOT" \
     --set data.omni_root="$RENDERER_DATA/encoded" \
     --set data.omni_index="$RENDERER_DATA/encoded/train.jsonl" \
@@ -296,7 +296,7 @@ renderer_train \
   --set runtime.output_dir="$RENDERER_RUNS/control_lora"
 
 export CONTROL_CHECKPOINT="$RENDERER_RUNS/control_lora/checkpoint_model_038400"
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$CONTROL_CHECKPOINT" \
   --out "$RENDERER_WEIGHTS/my_control_lora.safetensors"
 ```
@@ -310,7 +310,7 @@ with structure guidance. The control checkpoint stays frozen:
 hf download ZhengmingYu/DMAD \
   minimax_h3/dmad_minimax_h3_4step_lora_critic.safetensors \
   --local-dir "$SOLAR_RENDERER_ROOT/dmad"
-python -m solarwm.renderer.convert_dmad \
+python -m solar.renderer.convert_dmad \
   --h3 "$H3_ROOT" \
   --src "$SOLAR_RENDERER_ROOT/dmad/minimax_h3/dmad_minimax_h3_4step_lora_critic.safetensors" \
   --out "$RENDERER_WEIGHTS/dmad_4step_lora.safetensors"
@@ -321,7 +321,7 @@ renderer_train \
   --set train.dmd.control="$CONTROL_CHECKPOINT" \
   --set runtime.output_dir="$RENDERER_RUNS/structure_guided_4step"
 
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$RENDERER_RUNS/structure_guided_4step/checkpoint_model_000800" \
   --out "$RENDERER_WEIGHTS/my_4step_lora.safetensors"
 ```
@@ -342,7 +342,7 @@ renderer_train \
   --set runtime.output_dir="$RENDERER_RUNS/causal_control_lora"
 
 export CAUSAL_CONTROL_CHECKPOINT="$RENDERER_RUNS/causal_control_lora/checkpoint_model_019200"
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$CAUSAL_CONTROL_CHECKPOINT" \
   --out "$RENDERER_WEIGHTS/my_causal_control_lora.safetensors"
 ```
@@ -361,7 +361,7 @@ renderer_train \
   --set train.dmd.control="$CONTROL_CHECKPOINT" \
   --set runtime.output_dir="$RENDERER_RUNS/causal_structure_guided_4step"
 
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$RENDERER_RUNS/causal_structure_guided_4step/checkpoint_model_001600" \
   --out "$RENDERER_WEIGHTS/my_causal_4step_lora.safetensors"
 ```
@@ -375,7 +375,7 @@ corresponding to your completed run.
 
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data)
 - [Benchmark and evaluation instructions](../../eval/solar_renderer/README.md)
-- [SolarWM MiniMax-H3 camera-model guide](../solarwm/backends/minimax-h3.md)
+- [SolarWM MiniMax-H3 camera-model guide](../solar_wm/backends/minimax-h3.md)
 
 ## Upstream synchronization
 
@@ -393,7 +393,7 @@ and preserve SolarWM's package layout and entry points.
 | Previous integration baseline | [`e018b0f673de865711fe99844d3976865722b8d0`](https://github.com/Enderfga/SolarRenderer/commit/e018b0f673de865711fe99844d3976865722b8d0) |
 | Changes integrated in this update | Explicit render duration (`--seconds`), combined float32 LoRA merge, long causal-rollout condition positions and audio handling, long-input VAE encoding, encoded-silence extension, and inference documentation. |
 | Existing integrations | ComfyUI, Reactor, evaluation tools, examples, and training guides from the previous baseline remain integrated; upstream did not change them in this update. |
-| SolarWM adaptation | Upstream `scripts/render.py` and `tools/omni_preencode.py` map to `src/solarwm/renderer/render.py` and `src/solarwm/renderer/preencode.py`. Causal and silence updates live in `src/solarwm/renderer/causal.py` and `src/solarwm/renderer/silence.py`, keeping shared MiniMax-H3 backend files unchanged. Reactor's optimization helpers support both the merged native model and the earlier PEFT-wrapped model. Documentation lives in `docs/solar_renderer/`; use `python -m solarwm.renderer` for rendering. |
+| SolarWM adaptation | Upstream `scripts/render.py` and `tools/omni_preencode.py` map to `solar/renderer/render.py` and `solar/renderer/preencode.py`. Causal and silence updates live in `solar/renderer/causal.py` and `solar/renderer/silence.py`, keeping shared MiniMax-H3 backend files unchanged. Reactor's optimization helpers support both the merged native model and the earlier PEFT-wrapped model. Documentation lives in `docs/solar_renderer/`; use `python -m solar.renderer` for rendering. |
 
 The separate [`data-engine/solar_renderer-data`](../../data-engine/README.md)
 submodule follows upstream's `data` branch and is pinned independently in the

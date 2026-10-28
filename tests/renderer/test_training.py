@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.renderer.core import _Prepared
-from solarwm.renderer.dmd import H3DMDInputs, H3OmniDMDCore
+from solar.renderer.core import _Prepared
+from solar.renderer.dmd import H3DMDInputs, H3OmniDMDCore
 
 torch = pytest.importorskip("torch")
 
@@ -238,8 +238,8 @@ class TinyReader:
 
 
 def small_runtime(tmp_path, monkeypatch):
-    from solarwm.backends.minimax_h3.fsdp import finite_clip_norm
-    from solarwm.renderer.dmd_runtime import H3OmniDMDRuntime, build_optimizer
+    from solar.backends.minimax_h3.fsdp import finite_clip_norm
+    from solar.renderer.dmd_runtime import H3OmniDMDRuntime, build_optimizer
 
     runtime = object.__new__(H3OmniDMDRuntime)
     runtime.torch, runtime.dist = torch, torch.distributed
@@ -330,7 +330,7 @@ def test_dmd_updates_critic_each_step_and_student_after_warmup(tmp_path, monkeyp
 
 
 def test_dmd_checkpoint_resume_reproduces_next_updates(tmp_path, monkeypatch):
-    from solarwm.checkpoint import verify_checkpoint
+    from solar.checkpoint import verify_checkpoint
 
     torch.manual_seed(193)
     runtime = small_runtime(tmp_path, monkeypatch)
@@ -361,8 +361,8 @@ def test_dmd_checkpoint_resume_reproduces_next_updates(tmp_path, monkeypatch):
 def test_renderer_resume_contract_pins_recipe_and_parent_bytes(tmp_path, monkeypatch):
     from copy import deepcopy
 
-    from solarwm.checkpoint import assert_resume_compatible
-    from solarwm.errors import CheckpointError
+    from solar.checkpoint import assert_resume_compatible
+    from solar.errors import CheckpointError
 
     runtime = small_runtime(tmp_path, monkeypatch)
     control = tmp_path / "control.safetensors"
@@ -405,7 +405,7 @@ def test_dmd_nonfinite_gradient_does_not_advance_optimizer(tmp_path, monkeypatch
 
 
 def test_dmd_resume_rejects_missing_critic_before_changing_student(tmp_path, monkeypatch):
-    from solarwm.errors import BackendContractError
+    from solar.errors import BackendContractError
 
     runtime = small_runtime(tmp_path, monkeypatch)
     for _ in range(3):
@@ -424,7 +424,7 @@ def test_dmd_resume_rejects_missing_critic_before_changing_student(tmp_path, mon
 def test_peer_nonfinite_is_reported_before_backward():
     from types import SimpleNamespace
 
-    from solarwm.renderer.runtime import RendererTrainingRuntime
+    from solar.renderer.runtime import RendererTrainingRuntime
 
     runtime = RendererTrainingRuntime.__new__(RendererTrainingRuntime)
     runtime.torch = torch

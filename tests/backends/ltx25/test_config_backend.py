@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.ltx25 import create_backend, official, torch_data
-from solarwm.backends.ltx25.config import validate_ltx25_config
-from solarwm.backends.ltx25.official import OfficialLTX25Provider
-from solarwm.config import load_config
-from solarwm.errors import BackendContractError, ConfigurationError
+from solar.backends.ltx25 import create_backend, official, torch_data
+from solar.backends.ltx25.config import validate_ltx25_config
+from solar.backends.ltx25.official import OfficialLTX25Provider
+from solar.config import load_config
+from solar.errors import BackendContractError, ConfigurationError
 
 ROOT = Path(__file__).resolve().parents[3]
-EXAMPLES = ROOT / "configs" / "examples" / "ltx25"
+EXAMPLES = ROOT / "configs" / "solar_wm" / "ltx25"
 
 
 @pytest.mark.parametrize(
@@ -179,7 +179,7 @@ def test_embedded_backend_resolves_and_missing_runtime_assets_fail_closed(
     report = tmp_path / "run" / "ltx25-readiness.rank-00000.json"
     assert report.is_file()
     assert (
-        '"provider":{"entrypoint":"solarwm.backends.ltx25.official:create_provider"'
+        '"provider":{"entrypoint":"solar.backends.ltx25.official:create_provider"'
         in report.read_text()
     )
     with pytest.raises(BackendContractError, match="cannot serve"):

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from solarwm.errors import ConfigurationError
-from solarwm.runtime.randomness import (
+from solar.errors import ConfigurationError
+from solar.runtime.randomness import (
     model_init_seed,
     objective_seed,
     rng_identity,
     stable_validation_seed,
 )
-from solarwm.runtime.topology import Topology
+from solar.runtime.topology import Topology
 
 
 def test_model_initialization_namespaces_match_reference_values() -> None:

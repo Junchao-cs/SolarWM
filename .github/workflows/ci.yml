@@ -23,8 +23,8 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.5'
       - run: python -m pip install -e '.[dev]'
-      - run: ruff check src tests tools skills eval/solar_renderer comfyui/solar_renderer reactor/solar_renderer
-      - run: ruff format --check src tests tools skills eval/solar_renderer comfyui/solar_renderer reactor/solar_renderer
+      - run: ruff check solar deploy tests tools skills eval/solar_renderer
+      - run: ruff format --check solar deploy tests tools skills eval/solar_renderer
       - run: pytest -q
       - name: Validate every example config
         run: |
@@ -33,11 +33,11 @@ jobs:
           import subprocess
           import sys
 
-          configs = sorted(Path("configs/examples").rglob("*.yaml"))
+          configs = sorted(Path("configs/solar_wm").rglob("*.yaml"))
           assert configs
           for config in configs:
               subprocess.run(
-                  [sys.executable, "-m", "solarwm", "config", "resolve", "--config", str(config)],
+                  [sys.executable, "-m", "solar", "config", "resolve", "--config", str(config)],
                   check=True,
                   stdout=subprocess.DEVNULL,
               )
@@ -56,15 +56,15 @@ jobs:
           # assets in addition to Python modules, including in a source archive.
           realtime_files = {
               path.as_posix()
-              for path in Path("src/solarwm/realtime_interaction").rglob("*")
+              for path in Path("deploy/solar_wm").rglob("*")
               if path.is_file() and path.suffix in {
                   ".py", ".md", ".txt", ".json", ".sh", ".png",
                   ".html", ".js", ".c", ".pt",
               }
           }
           assert realtime_files
-          source_modules = {path.as_posix() for path in Path("src/solarwm").rglob("*.py")}
-          example_root = Path("examples/solarwm")
+          source_modules = {path.as_posix() for path in Path("solar").rglob("*.py")}
+          example_root = Path("examples/solar_wm")
           example_files = {
               path for path in example_root.rglob("*")
               if path.is_file() and path.name in {"first.png", "prompt.txt"}
@@ -79,71 +79,93 @@ jobs:
           with zipfile.ZipFile(wheels[0]) as archive:
               names = set(archive.namelist())
           required_wheel = {
-              "solarwm/backends/minimax_h3/segmented_attention.py",
-              "solarwm/renderer/render.py",
-              "solarwm/renderer/assets/encoder_contract.json",
-              "solarwm/renderer/assets/h3_silence_153_158_170.safetensors",
-              "solarwm/backends/wan22/runtime/architectures/i2v_a14b.json",
-              "solarwm/backends/wan22/runtime/architectures/ti2v_5b.json",
-              "solarwm/backends/wan22/runtime/modeling/NOTICE.md",
+              "deploy/solar_wm/__init__.py",
+              "solar/examples/__init__.py",
+              "solar/backends/minimax_h3/segmented_attention.py",
+              "solar/renderer/render.py",
+              "solar/renderer/assets/encoder_contract.json",
+              "solar/renderer/assets/h3_silence_153_158_170.safetensors",
+              "solar/backends/wan22/runtime/architectures/i2v_a14b.json",
+              "solar/backends/wan22/runtime/architectures/ti2v_5b.json",
+              "solar/backends/wan22/runtime/modeling/NOTICE.md",
           }
-          required_wheel.update(name.removeprefix("src/") for name in realtime_files)
-          required_wheel.update(name.removeprefix("src/") for name in source_modules)
+          required_wheel.update(realtime_files)
+          required_wheel.update(source_modules)
           required_wheel.update(
-              "solarwm/examples/" + path.relative_to(example_root).as_posix()
+              "solar/examples/" + path.relative_to(example_root).as_posix()
               for path in example_files
           )
           assert required_wheel <= names, sorted(required_wheel - names)
-          assert not any(name.startswith("solarwm/realtime_interaction/cases/") for name in names)
+          assert not any(name.startswith("deploy/solar_wm/cases/") for name in names)
           assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
           assert any(name.endswith(".dist-info/licenses/NOTICE") for name in names)
 
           with tarfile.open(sdists[0], "r:gz") as archive:
               names = {name.split("/", 1)[-1] for name in archive.getnames()}
           required_sdist = {
+              "assets/solar-logo.svg",
+              "assets/solar-logo-transparent.png",
+              "assets/solar-logo-dark.png",
+              "assets/solarwm-demo-poster.png",
+              "assets/solarrenderer-demo.gif",
               "skills/solarrenderer-caption/SKILL.md",
               "skills/solarrenderer-caption/scripts/conditions.py",
               "skills/solarrenderer-caption/scripts/check.py",
               "skills/solarrenderer-caption/scripts/first_frame.py",
-              "docs/solarwm/environments.md",
+              "docs/solar_wm/environments.md",
               "docs/solar_renderer/README.md",
               "docs/solar_renderer/inference.md",
               "docs/solar_renderer/prompts.md",
               "docs/solar_renderer/training.md",
-              "comfyui/solar_renderer/__init__.py",
-              "comfyui/solar_renderer/web/index.html",
-              "comfyui/solar_renderer/web/wordmark.png",
-              "comfyui/solar_renderer/workflows/solarrenderer_full.json",
-              "reactor/solar_renderer/reactor.yaml",
-              "reactor/solar_renderer/solarrenderer_backend.py",
-              "reactor/solar_renderer/stage_source.py",
-              "reactor/solar_renderer/.dockerignore",
-              "reactor/solar_renderer/demo/package-lock.json",
-              "reactor/solar_renderer/demo/src/main.tsx",
-              "reactor/solar_renderer/demo/public/examples/highway/LICENSE",
+              "deploy/solar_renderer/comfyui/__init__.py",
+              "deploy/solar_renderer/comfyui/web/index.html",
+              "deploy/solar_renderer/comfyui/web/wordmark.png",
+              "deploy/solar_renderer/comfyui/workflows/solarrenderer_full.json",
+              "deploy/solar_renderer/reactor/reactor.yaml",
+              "deploy/solar_renderer/reactor/solarrenderer_backend.py",
+              "deploy/solar_renderer/reactor/stage_source.py",
+              "deploy/solar_renderer/reactor/.dockerignore",
+              "deploy/solar_renderer/reactor/demo/package-lock.json",
+              "deploy/solar_renderer/reactor/demo/src/main.tsx",
+              "deploy/solar_renderer/reactor/demo/public/examples/highway/LICENSE",
               "eval/solar_renderer/render_benchmark.py",
               "eval/solar_renderer/setup.sh",
               "configs/solar_renderer/control_lora.yaml",
               "examples/solar_renderer/sem-highway_synthwave/prompt.txt",
               "CONTRIBUTING.md",
               "SECURITY.md",
-              "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
+              "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
           }
           required_sdist.update(realtime_files)
           required_sdist.update(source_modules)
           required_sdist.update(path.as_posix() for path in example_files)
-          required_sdist.add("examples/solarwm/README.md")
-          required_sdist.add("src/solarwm/realtime_interaction/.ruff.toml")
+          required_sdist.add("examples/solar_wm/README.md")
+          required_sdist.add("deploy/solar_wm/.ruff.toml")
           assert required_sdist <= names, sorted(required_sdist - names)
-          assert not any(name.startswith("src/solarwm/realtime_interaction/cases/") for name in names)
+          assert not any(name.startswith("deploy/solar_wm/cases/") for name in names)
           assert not any("/node_modules/" in name or "/.solarwm-source/" in name for name in names)
           PY
           python -m pip install --force-reinstall --no-deps dist/*.whl
           pushd /tmp
-          python -m solarwm --version
-          python -m solarwm config routes
+          python -m solar --version
+          solar --version
+          solarwm --version
+          python -m solar config routes
           solar-renderer --help
-          python -m solarwm.renderer.training --help
+          python -m solar.renderer.training --help
+          python -m deploy.solar_wm.solarwm_web.configure --help
+          python - <<'PY'
+          from pathlib import Path
+          from deploy.solar_wm.solarwm_web.examples import bundled_cases
+
+          cases = bundled_cases()
+          assert cases
+          for case in cases.values():
+              image = Path(case["first"])
+              assert image.is_file()
+              assert image.parent.parent.name == "examples"
+              assert image.parent.parent.parent.name == "solar"
+          PY
           popd
 
   renderer:
@@ -171,11 +193,11 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: reactor/solar_renderer/demo/package-lock.json
+          cache-dependency-path: deploy/solar_renderer/reactor/demo/package-lock.json
       - run: npm ci
-        working-directory: reactor/solar_renderer/demo
+        working-directory: deploy/solar_renderer/reactor/demo
       - run: npm run build
-        working-directory: reactor/solar_renderer/demo
+        working-directory: deploy/solar_renderer/reactor/demo
 
   reactor-contracts:
     runs-on: ubuntu-latest
@@ -187,6 +209,6 @@ jobs:
           cache: pip
       - run: python -m pip install 'reactor-runtime==3.8.3' 'numpy>=2.1' PyYAML Pillow 'av>=18' pytest
       - run: PYTHONPATH=. python -m pytest tests/ -q
-        working-directory: reactor/solar_renderer
+        working-directory: deploy/solar_renderer/reactor
       - run: python -m reactor_runtime.schema --path . --out /tmp/solar-renderer-schema.json
-        working-directory: reactor/solar_renderer
+        working-directory: deploy/solar_renderer/reactor

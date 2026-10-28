@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from solarwm.renderer import preencode
+from solar.renderer import preencode
 
 encoders = pytest.importorskip("diffusers.modular_pipelines.minimax_h3.encoders")
 AutoencoderKLMiniMaxH3 = pytest.importorskip(

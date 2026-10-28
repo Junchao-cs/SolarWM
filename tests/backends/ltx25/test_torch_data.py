@@ -7,19 +7,19 @@ from typing import Any
 import pytest
 import torch
 
-from solarwm.backends.ltx25 import torch_data as ltx_data
-from solarwm.backends.ltx25.artifact import TENSOR_SPECS
-from solarwm.backends.ltx25.geometry import STABLE_GEOMETRY
-from solarwm.backends.ltx25.torch_data import (
+from solar.backends.ltx25 import torch_data as ltx_data
+from solar.backends.ltx25.artifact import TENSOR_SPECS
+from solar.backends.ltx25.geometry import STABLE_GEOMETRY
+from solar.backends.ltx25.torch_data import (
     PreencodedBatchSource,
     TorchBatch,
     _camera_magnitude_rejection,
     _validate_tensors,
 )
-from solarwm.data.index import IndexRow
-from solarwm.data.sampling import SamplePlan
-from solarwm.errors import BackendContractError
-from solarwm.runtime import Topology
+from solar.data.index import IndexRow
+from solar.data.sampling import SamplePlan
+from solar.errors import BackendContractError
+from solar.runtime import Topology
 
 
 def _plan() -> SamplePlan:

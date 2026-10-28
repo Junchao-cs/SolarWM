@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.checkpoint import (
+from solar.checkpoint import (
     CheckpointContract,
     CheckpointTransaction,
     assert_resume_compatible,
     store,
     verify_checkpoint,
 )
-from solarwm.errors import CheckpointError
-from solarwm.runtime.serialization import canonical_json_bytes
+from solar.errors import CheckpointError
+from solar.runtime.serialization import canonical_json_bytes
 
 
 def _contract(**changes: object) -> CheckpointContract:
@@ -116,7 +116,7 @@ def test_verification_rejects_non_v2_schema(tmp_path: Path) -> None:
             metadata={},
         )
     manifest = json.loads((target / "checkpoint-manifest.json").read_bytes())
-    manifest["schema"] = "solarwm.checkpoint.unsupported"
+    manifest["schema"] = "solar.checkpoint.unsupported"
     manifest_bytes = canonical_json_bytes(manifest)
     (target / "checkpoint-manifest.json").write_bytes(manifest_bytes)
     complete = json.loads((target / "COMPLETE.json").read_bytes())

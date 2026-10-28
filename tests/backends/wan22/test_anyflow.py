@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from solarwm.backends.wan22.anyflow import (
+from solar.backends.wan22.anyflow import (
     SAMPLE_TYPE_CONSISTENCY,
     SAMPLE_TYPE_DIFFUSION,
     SAMPLE_TYPE_FLOW_MAP,

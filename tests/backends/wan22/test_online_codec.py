@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from solarwm.backends.wan22.runtime.codec import Wan5BOnlineCodec
+from solar.backends.wan22.runtime.codec import Wan5BOnlineCodec
 
 
 def test_stage2_codec_encodes_only_first_frame_and_preserves_rollout_shape() -> None:

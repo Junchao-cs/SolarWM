@@ -6,12 +6,12 @@ from typing import Any
 
 import pytest
 
-from solarwm.backends.ltx25 import preencode_transaction as transaction
-from solarwm.backends.ltx25.backend import _preencode_expected_rows
-from solarwm.backends.ltx25.torch_raw import RawIndexedStream
-from solarwm.data import read_index
-from solarwm.errors import DataContractError
-from solarwm.preencode import (
+from solar.backends.ltx25 import preencode_transaction as transaction
+from solar.backends.ltx25.backend import _preencode_expected_rows
+from solar.backends.ltx25.torch_raw import RawIndexedStream
+from solar.data import read_index
+from solar.errors import DataContractError
+from solar.preencode import (
     EncodedPayload,
     EncoderContract,
     TensorSpec,

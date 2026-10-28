@@ -10,10 +10,10 @@ import pytest
 import torch
 from safetensors.torch import load_file, save_file
 
-from solarwm.renderer import preencode
-from solarwm.renderer.convert_dmad import convert
-from solarwm.renderer.hf_samples import TRAIN, clips
-from solarwm.renderer.render import lora_pairs
+from solar.renderer import preencode
+from solar.renderer.convert_dmad import convert
+from solar.renderer.hf_samples import TRAIN, clips
+from solar.renderer.render import lora_pairs
 
 
 def test_preencode_commits_only_completed_samples_and_resumes(tmp_path, monkeypatch):
@@ -104,7 +104,7 @@ def test_dataset_tar_cannot_write_outside_output(tmp_path):
 
 
 def test_export_creates_parent_directory_and_preserves_adapter_metadata(tmp_path, monkeypatch):
-    from solarwm.renderer.export_lora import main
+    from solar.renderer.export_lora import main
 
     state = {
         "base_model.model.layer.lora_A.weight": torch.ones(2, 4),
@@ -122,7 +122,7 @@ def test_export_creates_parent_directory_and_preserves_adapter_metadata(tmp_path
 
 
 def test_prepare_existing_h3_localizes_components_without_extra_model_layout(tmp_path, monkeypatch):
-    from solarwm.renderer.prepare_h3 import main
+    from solar.renderer.prepare_h3 import main
 
     path = tmp_path / "modular_model_index.json"
     path.write_text(

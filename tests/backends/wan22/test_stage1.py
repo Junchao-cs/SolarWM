@@ -10,7 +10,7 @@ def test_stage1_training_defers_cleanup_to_explicit_caller(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage1
+    from solar.backends.wan22.runtime import stage1
 
     runtime = SimpleNamespace(topology=SimpleNamespace(raw_rank=0))
     calls: list[str] = []
@@ -38,7 +38,7 @@ def test_stage1_training_defers_cleanup_to_explicit_caller(
 
 def test_per_block_sampler_consumes_the_full_frame_draw() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.stage1 import (
+    from solar.backends.wan22.runtime.stage1 import (
         sample_per_block_timestep_indices,
     )
 
@@ -65,7 +65,7 @@ def test_per_block_sampler_consumes_the_full_frame_draw() -> None:
 
 def test_teacher_forcing_adapter_uses_the_root_module_forward() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanDiffusion
+    from solar.backends.wan22.runtime.components import WanDiffusion
 
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
@@ -98,7 +98,7 @@ def test_teacher_forcing_adapter_uses_the_root_module_forward() -> None:
 
 def test_wan_adapter_applies_logd4_once_at_the_model_boundary() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanDiffusion
+    from solar.backends.wan22.runtime.components import WanDiffusion
 
     calls: list[dict[str, object]] = []
 
@@ -136,7 +136,7 @@ def test_wan_adapter_applies_logd4_once_at_the_model_boundary() -> None:
 
 def test_causal_root_forward_dispatches_teacher_forcing_inside_wrapper() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.modeling.causal_model import CausalWanModel
+    from solar.backends.wan22.runtime.modeling.causal_model import CausalWanModel
 
     model = CausalWanModel.__new__(CausalWanModel)
     torch.nn.Module.__init__(model)
@@ -178,7 +178,7 @@ def test_causal_root_forward_dispatches_teacher_forcing_inside_wrapper() -> None
 
 def test_inference_window_adapter_uses_the_root_module_forward() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanDiffusion
+    from solar.backends.wan22.runtime.components import WanDiffusion
 
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
@@ -215,7 +215,7 @@ def test_inference_window_adapter_uses_the_root_module_forward() -> None:
 
 def test_causal_root_forward_dispatches_inference_window_inside_wrapper() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.modeling.causal_model import CausalWanModel
+    from solar.backends.wan22.runtime.modeling.causal_model import CausalWanModel
 
     model = CausalWanModel.__new__(CausalWanModel)
     torch.nn.Module.__init__(model)

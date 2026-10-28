@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.minimax_h3.config import validate_h3_config
-from solarwm.backends.minimax_h3.full_length import exported_fps, full_length_geometry
-from solarwm.config import load_config
-from solarwm.errors import ConfigurationError
+from solar.backends.minimax_h3.config import validate_h3_config
+from solar.backends.minimax_h3.full_length import exported_fps, full_length_geometry
+from solar.config import load_config
+from solar.errors import ConfigurationError
 
 ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = ROOT / "configs/examples/minimax_h3/infer-stage2-source-length-sp8.yaml"
+EXAMPLE = ROOT / "configs/solar_wm/minimax_h3/infer-stage2-source-length-sp8.yaml"
 
 
 @pytest.mark.parametrize(
@@ -58,7 +58,7 @@ def test_full_length_rollout_uses_every_chunk_and_keeps_training_strict(monkeypa
 
     import torch
 
-    from solarwm.backends.minimax_h3 import sgf_rollout as sgf
+    from solar.backends.minimax_h3 import sgf_rollout as sgf
 
     seen = []
 

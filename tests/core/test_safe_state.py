@@ -6,8 +6,8 @@ import random
 import numpy as np
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.runtime.safe_state import (
+from solar.errors import BackendContractError
+from solar.runtime.safe_state import (
     decode_numpy_rng_state,
     decode_python_rng_state,
     encode_numpy_rng_state,

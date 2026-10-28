@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.training import (
+from solar.errors import BackendContractError
+from solar.training import (
     BatchIdentity,
     GradientStatus,
     JsonlEventSink,

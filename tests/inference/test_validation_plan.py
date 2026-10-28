@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.inference import InferenceCase
-from solarwm.inference.validation_plan import (
+from solar.errors import BackendContractError
+from solar.inference import InferenceCase
+from solar.inference.validation_plan import (
     load_validation_plan,
     publish_validation_plan,
     validation_plan_key,

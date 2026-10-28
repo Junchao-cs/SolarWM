@@ -1,13 +1,14 @@
 """Canonical examples and compatibility with existing deployment manifests."""
 
 import json
+import py_compile
 from pathlib import Path
 
 import pytest
 
-from solarwm.realtime_interaction.solarwm_web import examples
-from solarwm.realtime_interaction.solarwm_web.prepare_scene import bundled_cases
-from solarwm.realtime_interaction.solarwm_web.runtime.configuration import file_sha256, load_scenes
+from deploy.solar_wm.solarwm_web import examples
+from deploy.solar_wm.solarwm_web.prepare_scene import bundled_cases
+from deploy.solar_wm.solarwm_web.runtime.configuration import file_sha256, load_scenes
 
 LEGACY_IDS = [
     "snow",
@@ -32,7 +33,7 @@ def write_example(root, name, prompt="A test scene."):
 
 
 def test_checkout_examples_are_the_canonical_image_prompt_pairs():
-    root = Path(__file__).resolve().parents[2] / "examples/solarwm"
+    root = Path(__file__).resolve().parents[2] / "examples/solar_wm"
     rows = bundled_cases()
     assert list(rows) == ["snow", "fantasy_world"]
     for name, row in rows.items():
@@ -49,12 +50,26 @@ def test_examples_discover_new_scenes_and_keep_snow_first(tmp_path):
 
 
 def test_installed_package_uses_packaged_examples(monkeypatch, tmp_path):
-    package = tmp_path / "site-packages/solarwm"
+    package = tmp_path / "site-packages/solar"
     write_example(package / "examples", "snow")
     monkeypatch.setattr(
-        examples, "__file__", str(package / "realtime_interaction/solarwm_web/examples.py")
+        examples, "__file__", str(package.parent / "deploy/solar_wm/solarwm_web/examples.py")
     )
     assert bundled_cases()["snow"]["first"] == str(package / "examples/snow/first.png")
+
+
+def test_installed_package_ignores_python_bytecode_cache(monkeypatch, tmp_path):
+    package = tmp_path / "site-packages/solar"
+    example_root = package / "examples"
+    write_example(example_root, "snow")
+    initializer = example_root / "__init__.py"
+    initializer.write_text('"""Packaged scene resources."""\n', encoding="utf-8")
+    py_compile.compile(str(initializer), doraise=True)
+    assert (example_root / "__pycache__").is_dir()
+    monkeypatch.setattr(
+        examples, "__file__", str(package.parent / "deploy/solar_wm/solarwm_web/examples.py")
+    )
+    assert list(bundled_cases()) == ["snow"]
 
 
 @pytest.mark.parametrize("missing", ["first.png", "prompt.txt"])

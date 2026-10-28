@@ -1,0 +1,140 @@
+# Raw samples are encoded online through the configured provider.
+schema: solarwm.run.v1
+action: train
+name: ltx25-stage0p5-online-153f-unpaired
+
+model:
+  family: ltx25_video
+  architecture: ltx-2.5-22b-dev-video-only
+  checkpoint_path: /path/to/models/LTX-2.5/diffusion_models/ltx-2.5-22b-dev-transformer-bf16.safetensors
+  training_mode: lora
+  torch_dtype: bfloat16
+  load_conditioners: false
+  audio_enabled: false
+  camera_attention_mode: fused_prope
+  camera_translation_transform: linear
+  camera_intrinsics_mode: wan_fixed
+  model_fps: 24.0
+  latent_channels: 128
+  latent_height: 16
+  latent_width: 24
+  caption_cache_stage: gemma4_feature_extractor_preconnector
+  attention_backend: cudnn
+  adapter:
+    type: lora
+    target: block_qkvo_ffn
+    rank: 384
+    alpha: 384
+    dropout: 0.0
+    bias: none
+    dtype: bfloat16
+    init_lora_weights: true
+  codec:
+    video_vae_path: /path/to/models/LTX-2.5/vae/ltx-2.5-video-vae-bf16.safetensors
+    gemma4_path: /path/to/models/LTX-2.5/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors
+
+data:
+  input_mode: raw_online
+  generation: raw-online-unpaired-v1
+  format: webdataset
+  transport:
+    kind: local
+    root: /path/to/SolarWM-Data/releases-v1
+  index_root: /path/to/SolarWM-Data/releases-v1
+  index: recipes/clean-153f/raw-wds/train-index.jsonl.gz
+  test_index: recipes/clean-153f/raw-wds/test-index.jsonl.gz
+  online_codec_protocol: solarwm.ltx25.online_codec.v1
+  behavior_status: unpaired
+  pixel_frames: 153
+  encoded_latents: 20
+  height: 512
+  width: 768
+  latent_channels: 128
+  latent_height: 16
+  latent_width: 24
+  frame_sampling: contiguous
+  source_fps_policy: provenance_only
+  random_start: false
+  max_rel_translation: 20.0
+  max_camera_abs: 20.0
+  seed: 42
+  num_workers: 1
+  prefetch_factor: 1
+  gcs_prefetch_shards: 32  # Only applies when data.transport.kind is gcs.
+  streaming_index: true
+  shuffle_buffer: 32
+  partition_mode: node_shard
+
+distributed:
+  world_size: 256
+  local_world_size: 8
+  sequence_parallel_size: 2
+  rank_partition: node_shard
+
+train:
+  stage: stage0p5
+  causal_mode: bidirectional
+  objective: native_rectified_flow
+  precision: bfloat16
+  micro_batch_size: 1
+  gradient_accumulation_steps: 2
+  global_batch_size: 256
+  first_frame_condition_dropout: 0.0
+  max_steps: 30000
+  timestep_sampling:
+    mode: shifted_logit_normal
+    std: 1.0
+    epsilon: 1.0e-3
+    uniform_probability: 0.1
+  optimizer:
+    name: fp32_master_adamw
+    learning_rate: 1.0e-4
+    betas: [0.9, 0.95]
+    epsilon: 1.0e-8
+    weight_decay: 0.01
+    gradient_clip: 1.0
+    warmup_steps: 500
+  fsdp:
+    sharding_strategy: HYBRID_SHARD
+    activation_checkpointing: true
+    activation_checkpointed_blocks: 48
+    preserve_checkpoint_dtype: true
+    param_dtype: null
+    reduce_dtype: float32
+    buffer_dtype: null
+    ignore_fp32_scale_tables: true
+
+validation:
+  sample_count: 256
+  selection_seed: 42
+  smoke_step: 0
+  validate_every_steps: 500
+  passes: [live, ema]
+  inference:
+    negative_caption_cache: /path/to/assets/ltx25-negative-caption.safetensors
+    num_inference_steps: 30
+    seed: 10
+    fps: 24
+    decoder_mode: diffvae_chunked_eager
+    guidance:
+      cfg_scale: 3.0
+      stg_scale: 1.0
+      rescale_scale: 0.7
+      stg_blocks: [28]
+
+checkpoint:
+  save_every_steps: 500
+  save_optimizer: true
+  ema:
+    enabled: true
+    start_step: 0
+    update_every_steps: 1
+    decay: 0.999
+    device: cuda
+    dtype: float32
+    sharded: true
+    trainable_only: true
+
+runtime:
+  output_dir: outputs/ltx25-stage0p5-online-153f-unpaired
+  provider_entrypoint: solar.backends.ltx25.official:create_provider

@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-PACK = ROOT / "comfyui/solar_renderer"
+PACK = ROOT / "deploy/solar_renderer/comfyui"
 
 
 @pytest.fixture
@@ -124,7 +124,7 @@ def test_comfyui_symlink_loads_all_nodes_and_repository_resources(node_pack):
 
 def test_comfyui_uses_the_integrated_silence_artifact(node_pack):
     path = Path(node_pack.module.nodes.SILENCE)
-    assert path == ROOT / "src/solarwm/renderer/assets/h3_silence_153_158_170.safetensors"
+    assert path == ROOT / "solar/renderer/assets/h3_silence_153_158_170.safetensors"
     with path.open("rb") as handle:
         header_size = struct.unpack("<Q", handle.read(8))[0]
         header = json.loads(handle.read(header_size))

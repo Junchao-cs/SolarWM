@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from solarwm.backends.minimax_h3.camera import (
+from solar.backends.minimax_h3.camera import (
     H3_CAMERA_PROPE_DIM_START,
     first_frame_relative_w2c,
     h3_fused_prope_contract,
@@ -13,7 +13,7 @@ from solarwm.backends.minimax_h3.camera import (
     select_camera_rows,
     validate_absolute_c2w,
 )
-from solarwm.backends.minimax_h3.torch_prope import _project
+from solar.backends.minimax_h3.torch_prope import _project
 
 
 def _poses(translations: list[tuple[float, float, float]]) -> np.ndarray:

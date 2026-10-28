@@ -4,19 +4,19 @@ import numpy as np
 import pytest
 import torch
 
-from solarwm.backends.ltx25.adapter import (
+from solar.backends.ltx25.adapter import (
     FUSED_PROPE_CONTRACT,
     lora_target_modules,
     pack_stage0p5,
     unpack_video_tokens,
     verify_parameter_free_state_keys,
 )
-from solarwm.backends.ltx25.distributed import (
+from solar.backends.ltx25.distributed import (
     DistributedContract,
     build_hsdp_topology,
     contiguous_token_bounds,
 )
-from solarwm.backends.ltx25.flow import (
+from solar.backends.ltx25.flow import (
     first_frame_excluded_mse,
     predict_clean,
     restore_clean_first_latent,
@@ -25,8 +25,8 @@ from solarwm.backends.ltx25.flow import (
     shifted_logit_normal_mu,
     velocity_target,
 )
-from solarwm.backends.ltx25.torch_distributed import clip_replicated_gradient_norm
-from solarwm.errors import BackendContractError
+from solar.backends.ltx25.torch_distributed import clip_replicated_gradient_norm
+from solar.errors import BackendContractError
 
 
 def test_native_flow_equations_reconstruct_clean_sample() -> None:

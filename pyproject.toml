@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "solarwm"
+name = "solar"
 version = "0.1.0"
 description = "A reproducible multi-backbone framework for interactive video world models."
 readme = "README.md"
@@ -76,25 +76,27 @@ dev = [
 ]
 
 [project.scripts]
-solarwm = "solarwm.cli:main"
-solar-renderer = "solarwm.renderer.render:main"
+solar = "solar.cli:main"
+solarwm = "solar.cli:main"
+solar-renderer = "solar.renderer.render:main"
 
 [tool.setuptools]
 # Keep example assets in one source location; wheels install them as resources.
-package-dir = {"solarwm" = "src/solarwm", "solarwm.examples" = "examples/solarwm"}
+package-dir = {"solar" = "solar", "solar.examples" = "examples/solar_wm", "deploy.solar_wm" = "deploy/solar_wm"}
+include-package-data = false
 
 [tool.setuptools.package-data]
-"solarwm.renderer" = ["assets/*.json", "assets/*.safetensors"]
-"solarwm.examples" = ["*/first.png", "*/prompt.txt"]
-"solarwm.realtime_interaction" = [
+"solar.renderer" = ["assets/*.json", "assets/*.safetensors"]
+"solar.examples" = ["*/first.png", "*/prompt.txt"]
+"deploy.solar_wm" = [
   "README.md", "requirements.txt", "*.example.json", "launch.sh",
 ]
-"solarwm.realtime_interaction.solarwm_web" = [
+"deploy.solar_wm.solarwm_web" = [
   "static/*.html", "static/*.js", "static/*.png",
   "acceleration/*.json", "media/*.c", "vae/tables/*.json", "vae/tables/*.pt",
 ]
-"solarwm.backends.wan22.runtime.architectures" = ["*.json"]
-"solarwm.backends.wan22.runtime.modeling" = ["NOTICE.md"]
+"solar.backends.wan22.runtime.architectures" = ["*.json"]
+"solar.backends.wan22.runtime.modeling" = ["NOTICE.md"]
 
 # flash-attn imports torch from setup.py.  Keep build isolation, but augment the
 # isolated build environment with the exact torch selected for the runtime.

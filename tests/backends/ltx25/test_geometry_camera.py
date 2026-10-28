@@ -3,14 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from solarwm.backends.ltx25.camera import (
+from solar.backends.ltx25.camera import (
     canonicalize_signed_focal_gauge,
     condition_camera,
     expand_token_camera,
     prepare_latent_camera,
     validate_latent_camera,
 )
-from solarwm.backends.ltx25.geometry import (
+from solar.backends.ltx25.geometry import (
     STABLE_GEOMETRY,
     causal_camera_pixel_indices,
     cover_resize,
@@ -18,7 +18,7 @@ from solarwm.backends.ltx25.geometry import (
     transform_intrinsics,
     validate_contiguous_source_indices,
 )
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 def _identity_poses(rows: int) -> np.ndarray:

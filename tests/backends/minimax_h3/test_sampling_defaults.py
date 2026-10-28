@@ -6,10 +6,10 @@ from contextlib import ExitStack
 
 import pytest
 
-from solarwm.backends.minimax_h3.artifacts import H3PreencodedStream, h3_encoder_contract
-from solarwm.backends.minimax_h3.runtime import _reader
-from solarwm.errors import DataContractError
-from solarwm.runtime import Topology
+from solar.backends.minimax_h3.artifacts import H3PreencodedStream, h3_encoder_contract
+from solar.backends.minimax_h3.runtime import _reader
+from solar.errors import DataContractError
+from solar.runtime import Topology
 
 
 @pytest.fixture

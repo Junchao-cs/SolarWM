@@ -7,15 +7,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from solarwm.backends.minimax_h3.artifacts import H3ArtifactBatch, H3CameraFilterError
-from solarwm.backends.minimax_h3.raw_data import decode_camera
-from solarwm.backends.minimax_h3.validation_stream import (
+from solar.backends.minimax_h3.artifacts import H3ArtifactBatch, H3CameraFilterError
+from solar.backends.minimax_h3.raw_data import decode_camera
+from solar.backends.minimax_h3.validation_stream import (
     H3IndexedValidationStream,
     source_video_id,
     validation_candidates,
 )
-from solarwm.data import IndexRow
-from solarwm.errors import DataContractError
+from solar.data import IndexRow
+from solar.errors import DataContractError
 
 
 def rows_by_source(count=12):

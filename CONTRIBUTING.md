@@ -9,8 +9,8 @@ Before opening a change:
 
 ```bash
 python -m pip install -e '.[dev]'
-ruff check src tests tools
-ruff format --check src tests tools
+ruff check solar deploy tests tools
+ruff format --check solar deploy tests tools
 pytest -q
 python -m build
 ```

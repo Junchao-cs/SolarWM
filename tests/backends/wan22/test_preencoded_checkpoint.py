@@ -7,14 +7,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from solarwm.backends.wan22.runtime.checkpoint import (
+from solar.backends.wan22.runtime.checkpoint import (
     _assert_optimizer_names_match_module,
     normalize_model_state,
     normalize_optimizer_state,
     optimizer_parameter_names,
 )
-from solarwm.backends.wan22.runtime.data import CAMERA_CONVENTION
-from solarwm.backends.wan22.runtime.preencoded import (
+from solar.backends.wan22.runtime.data import CAMERA_CONVENTION
+from solar.backends.wan22.runtime.preencoded import (
     I2V_A14B_153F_VERSION,
     TI2V_5B_81F_VERSION,
     TI2V_5B_153F_VERSION,
@@ -26,15 +26,15 @@ from solarwm.backends.wan22.runtime.preencoded import (
     expected_81f_window_start,
     expected_153f_window_start,
 )
-from solarwm.config import load_config
-from solarwm.data.archive import RawSample
-from solarwm.data.sampling import SamplePlan
-from solarwm.errors import BackendContractError, DataContractError
+from solar.config import load_config
+from solar.data.archive import RawSample
+from solar.data.sampling import SamplePlan
+from solar.errors import BackendContractError, DataContractError
 
 ROOT = Path(__file__).resolve().parents[3]
-TI2V_153F_CONFIG = ROOT / "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml"
-TI2V_81F_CONFIG = ROOT / "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
-A14B_153F_CONFIG = ROOT / "configs/examples/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml"
+TI2V_153F_CONFIG = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml"
+TI2V_81F_CONFIG = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
+A14B_153F_CONFIG = ROOT / "configs/solar_wm/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml"
 
 
 def test_only_camera_magnitude_rejections_are_skippable() -> None:
@@ -415,8 +415,8 @@ def test_current_preencode_schema_uses_readable_tensor_contract() -> None:
 def test_preencoded_dataloader_materializes_the_index_before_worker_fork(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import preencoded
-    from solarwm.data.index import IndexRow
+    from solar.backends.wan22.runtime import preencoded
+    from solar.data.index import IndexRow
 
     rows = (
         IndexRow.from_mapping(
@@ -475,8 +475,8 @@ def test_preencoded_dataloader_materializes_the_index_before_worker_fork(
 def test_stateful_preencoded_reader_keeps_multiworker_prefetch_and_resumes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import preencoded
-    from solarwm.data.index import IndexRow
+    from solar.backends.wan22.runtime import preencoded
+    from solar.data.index import IndexRow
 
     torch = pytest.importorskip("torch")
     rows = tuple(
@@ -576,9 +576,9 @@ def test_stateful_preencoded_reader_keeps_multiworker_prefetch_and_resumes(
 def test_stateful_preencoded_reader_fails_after_an_entire_timed_out_epoch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import preencoded
-    from solarwm.data.index import IndexRow
-    from solarwm.data.transport import GCSDownloadTimeout
+    from solar.backends.wan22.runtime import preencoded
+    from solar.data.index import IndexRow
+    from solar.data.transport import GCSDownloadTimeout
 
     pytest.importorskip("torch")
     rows = tuple(
@@ -658,8 +658,8 @@ def test_stateful_preencoded_reader_fails_after_an_entire_timed_out_epoch(
 def test_preencoded_stream_prepares_the_planned_shard_before_materialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import preencoded
-    from solarwm.data.index import IndexRow
+    from solar.backends.wan22.runtime import preencoded
+    from solar.data.index import IndexRow
 
     row = IndexRow.from_mapping(
         0,

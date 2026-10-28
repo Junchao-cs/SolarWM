@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from solarwm.backends.wan22.runtime import readiness
+from solar.backends.wan22.runtime import readiness
 
 
 def test_normal_training_probe_does_not_require_inference_diffusers(monkeypatch) -> None:

@@ -10,14 +10,14 @@ from typing import ClassVar
 
 import pytest
 
-from solarwm.cli import _run_backend, main
-from solarwm.data.index import read_index
-from solarwm.errors import SolarWMError
+from solar.cli import _run_backend, main
+from solar.data.index import read_index
+from solar.errors import SolarWMError
 
 _WAN_TRAIN_CONFIG = (
     Path(__file__).resolve().parents[2]
     / "configs"
-    / "examples"
+    / "solar_wm"
     / "wan22_ti2v_5b"
     / "train_stage0p5_fm_81f.yaml"
 )
@@ -51,7 +51,7 @@ def test_data_inspect(tmp_path: Path, capsys) -> None:
 
 
 def test_cache_warmup_is_an_explicit_optional_data_command(tmp_path, capsys, monkeypatch) -> None:
-    import solarwm.data.transport as transport
+    import solar.data.transport as transport
 
     index = tmp_path / "index.jsonl"
     index.write_text(
@@ -235,13 +235,13 @@ def test_backend_run_clears_result_from_an_earlier_invocation(tmp_path: Path, mo
             assert not stale_result.exists()
             return 0
 
-    monkeypatch.setattr("solarwm.cli.load_config", lambda *_args: Resolved())
+    monkeypatch.setattr("solar.cli.load_config", lambda *_args: Resolved())
     monkeypatch.setattr(
-        "solarwm.cli.validate_route",
+        "solar.cli.validate_route",
         lambda _config: SimpleNamespace(family="test", key="test:train"),
     )
-    monkeypatch.setattr("solarwm.cli.build_launch_manifest", lambda **_kwargs: {})
-    monkeypatch.setattr("solarwm.backends.load_backend", lambda _family: Backend())
+    monkeypatch.setattr("solar.cli.build_launch_manifest", lambda **_kwargs: {})
+    monkeypatch.setattr("solar.backends.load_backend", lambda _family: Backend())
     monkeypatch.setenv("RANK", "0")
 
     assert _run_backend(Namespace(config=Resolved.path, set=[], command="train")) == 0
@@ -288,13 +288,13 @@ def test_camera_inference_routes_provenance_to_create_only_run_root(
             publication.write_text("{}\n", encoding="utf-8")
             return 0
 
-    monkeypatch.setattr("solarwm.cli.load_config", lambda *_args: Resolved())
+    monkeypatch.setattr("solar.cli.load_config", lambda *_args: Resolved())
     monkeypatch.setattr(
-        "solarwm.cli.validate_route",
+        "solar.cli.validate_route",
         lambda _config: SimpleNamespace(family="test", key="test:infer"),
     )
-    monkeypatch.setattr("solarwm.cli.build_launch_manifest", lambda **_kwargs: {})
-    monkeypatch.setattr("solarwm.backends.load_backend", lambda _family: Backend())
+    monkeypatch.setattr("solar.cli.build_launch_manifest", lambda **_kwargs: {})
+    monkeypatch.setattr("solar.backends.load_backend", lambda _family: Backend())
     monkeypatch.setenv("RANK", "0")
 
     assert _run_backend(Namespace(config=Resolved.path, set=[], command="infer")) == 0
@@ -339,13 +339,13 @@ def test_backend_run_applies_wan_compile_setting_before_lazy_import(
         return Backend()
 
     monkeypatch.delenv("SOLARWM_COMPILE_FLEX", raising=False)
-    monkeypatch.setattr("solarwm.cli.load_config", lambda *_args: Resolved())
+    monkeypatch.setattr("solar.cli.load_config", lambda *_args: Resolved())
     monkeypatch.setattr(
-        "solarwm.cli.validate_route",
+        "solar.cli.validate_route",
         lambda _config: SimpleNamespace(family="wan22_ti2v_5b", key="wan:test"),
     )
-    monkeypatch.setattr("solarwm.cli.build_launch_manifest", lambda **_kwargs: {})
-    monkeypatch.setattr("solarwm.backends.load_backend", load_backend)
+    monkeypatch.setattr("solar.cli.build_launch_manifest", lambda **_kwargs: {})
+    monkeypatch.setattr("solar.backends.load_backend", load_backend)
     monkeypatch.setenv("RANK", "0")
 
     assert _run_backend(Namespace(config=Resolved.path, set=[], command="train")) == 0
@@ -384,13 +384,13 @@ def test_backend_run_clears_inherited_wan_compile_setting_when_disabled(
         return Backend()
 
     monkeypatch.setenv("SOLARWM_COMPILE_FLEX", "1")
-    monkeypatch.setattr("solarwm.cli.load_config", lambda *_args: Resolved())
+    monkeypatch.setattr("solar.cli.load_config", lambda *_args: Resolved())
     monkeypatch.setattr(
-        "solarwm.cli.validate_route",
+        "solar.cli.validate_route",
         lambda _config: SimpleNamespace(family="wan22_ti2v_5b", key="wan:test"),
     )
-    monkeypatch.setattr("solarwm.cli.build_launch_manifest", lambda **_kwargs: {})
-    monkeypatch.setattr("solarwm.backends.load_backend", load_backend)
+    monkeypatch.setattr("solar.cli.build_launch_manifest", lambda **_kwargs: {})
+    monkeypatch.setattr("solar.backends.load_backend", load_backend)
     monkeypatch.setenv("RANK", "0")
 
     assert _run_backend(Namespace(config=Resolved.path, set=[], command="train")) == 0

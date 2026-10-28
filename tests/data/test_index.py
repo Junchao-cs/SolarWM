@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.data.index import (
+from solar.data.index import (
     IndexRow,
     ensure_disjoint,
     inventory,
@@ -14,7 +14,7 @@ from solarwm.data.index import (
     resolve_index_path,
     select_index_rows,
 )
-from solarwm.errors import DataContractError
+from solar.errors import DataContractError
 
 
 def _write(path: Path, rows: list[dict]) -> None:

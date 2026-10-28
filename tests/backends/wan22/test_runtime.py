@@ -10,21 +10,21 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from solarwm.backends.wan22 import create_backend
-from solarwm.backends.wan22.runtime.assets import WanAssetLayout
-from solarwm.backends.wan22.runtime.data import (
+from solar.backends.wan22 import create_backend
+from solar.backends.wan22.runtime.assets import WanAssetLayout
+from solar.backends.wan22.runtime.data import (
     CAMERA_CONVENTION,
     _source_fps,
     build_camera_tokens,
     latent_aligned_pixel_indices,
 )
-from solarwm.backends.wan22.runtime.stage0p5 import deterministic_i2v_drop_mask
-from solarwm.config import load_config
-from solarwm.data.camera import CameraGuards
-from solarwm.errors import BackendContractError, DataContractError
+from solar.backends.wan22.runtime.stage0p5 import deterministic_i2v_drop_mask
+from solar.config import load_config
+from solar.data.camera import CameraGuards
+from solar.errors import BackendContractError, DataContractError
 
 ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = ROOT / "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
+EXAMPLE = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
 
 
 def test_i2v_dropout_preserves_public_stochastic_contract() -> None:
@@ -89,7 +89,7 @@ def test_training_readiness_can_defer_full_index_inventory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from solarwm.backends.wan22.runtime import readiness
+    from solar.backends.wan22.runtime import readiness
 
     index = tmp_path / "train-index.jsonl.gz"
     index.write_bytes(b"staged-control")
@@ -112,7 +112,7 @@ def test_training_readiness_can_defer_full_index_inventory(
 def test_training_runtime_uses_the_lightweight_gate_for_full_resume(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import readiness
+    from solar.backends.wan22.runtime import readiness
 
     captured: dict[str, object] = {}
 
@@ -333,8 +333,8 @@ def test_wan_camera_tokens_preserve_fp32_operation_order() -> None:
 def test_stage0p5_sp_identity_uses_the_sequence_parallel_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage0p5
-    from solarwm.training.engine import BatchIdentity
+    from solar.backends.wan22.runtime import stage0p5
+    from solar.training.engine import BatchIdentity
 
     group = object()
     observed: dict[str, object] = {}
@@ -372,7 +372,7 @@ def test_stage0p5_sp_identity_uses_the_sequence_parallel_group(
 def test_initialization_receipt_records_inventory_without_reading_payloads(
     tmp_path: Path,
 ) -> None:
-    from solarwm.backends.wan22.runtime.loader import (
+    from solar.backends.wan22.runtime.loader import (
         WeightLoadReport,
         _bind_initialization_receipt,
     )
@@ -409,7 +409,7 @@ def test_initialization_receipt_records_inventory_without_reading_payloads(
 
 def test_wan5b_vae_reciprocal_is_computed_after_bfloat16_cast() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import Wan5BVAE
+    from solar.backends.wan22.runtime.components import Wan5BVAE
 
     vae = object.__new__(Wan5BVAE)
     vae._mean = torch.tensor(Wan5BVAE.mean, dtype=torch.float32)
@@ -425,7 +425,7 @@ def test_wan5b_vae_reciprocal_is_computed_after_bfloat16_cast() -> None:
 def test_weight_readiness_inventories_shard_headers_without_digests(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
     safetensors = pytest.importorskip("safetensors.torch")
-    from solarwm.backends.wan22.runtime.readiness import _probe_weights
+    from solar.backends.wan22.runtime.readiness import _probe_weights
 
     safetensors.save_file({"a": torch.ones(2)}, tmp_path / "part-01.safetensors")
     safetensors.save_file({"b": torch.zeros(3)}, tmp_path / "part-02.safetensors")
@@ -444,7 +444,7 @@ def test_weight_readiness_inventories_shard_headers_without_digests(tmp_path: Pa
 def test_weight_source_inventory_uses_safe_open_keys_api(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
     safetensors = pytest.importorskip("safetensors.torch")
-    from solarwm.backends.wan22.runtime.loader import _source_keys
+    from solar.backends.wan22.runtime.loader import _source_keys
 
     first = tmp_path / "part-01.safetensors"
     second = tmp_path / "part-02.safetensors"
@@ -455,9 +455,9 @@ def test_weight_source_inventory_uses_safe_open_keys_api(tmp_path: Path) -> None
 
 
 def test_anyflow_external_embedding_readiness_checks_the_real_file(tmp_path: Path) -> None:
-    from solarwm.backends.wan22.runtime.readiness import _check_assets
+    from solar.backends.wan22.runtime.readiness import _check_assets
 
-    example = ROOT / "configs/examples/wan22_ti2v_5b/train_stage1_tf_anyflow_v1_5_81f.yaml"
+    example = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage1_tf_anyflow_v1_5_81f.yaml"
     config = load_config(example).mutable_copy()
     config["model"]["base_path"] = str(tmp_path)
     negative = tmp_path / "conditioning/wan_negemb_cn.pth"
@@ -477,7 +477,7 @@ def test_tiny_camera_transformer_executes_forward_and_backward_when_installed() 
     if not torch.cuda.is_available():
         pytest.skip("the Wan attention kernel requires CUDA")
 
-    from solarwm.backends.wan22.runtime.modeling.causal_model import CausalWanModel
+    from solar.backends.wan22.runtime.modeling.causal_model import CausalWanModel
 
     torch.manual_seed(7)
     device = torch.device("cuda")
@@ -532,10 +532,10 @@ def test_tiny_camera_transformer_executes_forward_and_backward_when_installed() 
 def test_wan_activation_checkpointing_wraps_every_block_non_reentrantly() -> None:
     torch = pytest.importorskip("torch")
     pytest.importorskip("diffusers")
-    from solarwm.backends.wan22.runtime.distributed import (
+    from solar.backends.wan22.runtime.distributed import (
         apply_wan_activation_checkpointing,
     )
-    from solarwm.backends.wan22.runtime.modeling.causal_model import (
+    from solar.backends.wan22.runtime.modeling.causal_model import (
         CausalWanAttentionBlock,
     )
 
@@ -558,7 +558,7 @@ def test_successful_training_step_returns_process_exit_zero_and_cleans_up(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage0p5
+    from solar.backends.wan22.runtime import stage0p5
 
     runtime = SimpleNamespace(topology=SimpleNamespace(raw_rank=0))
     calls: list[str] = []
@@ -587,8 +587,8 @@ def test_successful_training_step_returns_process_exit_zero_and_cleans_up(
 def test_checkpoint_commit_updates_inline_validation_weight_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import checkpoint
-    from solarwm.backends.wan22.runtime.stage0p5 import Wan5BStage0p5Runtime
+    from solar.backends.wan22.runtime import checkpoint
+    from solar.backends.wan22.runtime.stage0p5 import Wan5BStage0p5Runtime
 
     runtime = Wan5BStage0p5Runtime.__new__(Wan5BStage0p5Runtime)
     runtime.config = {}
@@ -611,7 +611,7 @@ def test_checkpoint_commit_updates_inline_validation_weight_identity(
 
 def test_rank_runtime_state_restores_reader_and_all_cpu_rng_streams() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.checkpoint import (
+    from solar.backends.wan22.runtime.checkpoint import (
         _local_rank_runtime_state,
         _restore_rank_runtime_state,
     )
@@ -646,7 +646,7 @@ def test_rank_runtime_state_restores_reader_and_all_cpu_rng_streams() -> None:
 
 def test_full_resume_rejects_checkpoint_without_rank_runtime_state() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.checkpoint import _restore_rank_runtime_state
+    from solar.backends.wan22.runtime.checkpoint import _restore_rank_runtime_state
 
     with pytest.raises(BackendContractError, match="rank-local reader and RNG state"):
         _restore_rank_runtime_state(None, reader=object(), device=torch.device("cpu"))
@@ -655,7 +655,7 @@ def test_full_resume_rejects_checkpoint_without_rank_runtime_state() -> None:
 def test_training_failure_still_cleans_up_distributed_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage0p5
+    from solar.backends.wan22.runtime import stage0p5
 
     calls: list[str] = []
 
@@ -673,7 +673,7 @@ def test_training_defers_cleanup_to_explicit_caller(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage0p5
+    from solar.backends.wan22.runtime import stage0p5
 
     runtime = SimpleNamespace(topology=SimpleNamespace(raw_rank=0))
     calls: list[str] = []
@@ -701,7 +701,7 @@ def test_training_defers_cleanup_to_explicit_caller(
 def test_training_rejects_unknown_lifecycle_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import stage0p5
+    from solar.backends.wan22.runtime import stage0p5
 
     monkeypatch.setenv("SOLARWM_TORCHRUN_LIFECYCLE_OWNER", "somebody")
     with pytest.raises(BackendContractError, match="must be backend or caller"):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from solarwm.backends.wan22.objectives import (
+from solar.backends.wan22.objectives import (
     apply_timestep_shift_array,
     rectified_interpolate_array,
     velocity_target_array,

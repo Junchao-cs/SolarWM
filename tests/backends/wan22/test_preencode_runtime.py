@@ -9,16 +9,16 @@ from types import SimpleNamespace
 
 import pytest
 
-import solarwm.backends.wan22.runtime.preencode as preencode_runtime
-from solarwm.backends.wan22.runtime.preencode import (
+import solar.backends.wan22.runtime.preencode as preencode_runtime
+from solar.backends.wan22.runtime.preencode import (
     _split_for_sample,
     run_wan_preencode,
 )
-from solarwm.backends.wan22.runtime.readiness import probe_runtime
-from solarwm.config import load_config
-from solarwm.data.index import read_index
-from solarwm.errors import BackendContractError
-from solarwm.preencode import EncodedPayload, EncoderContract, TensorSpec
+from solar.backends.wan22.runtime.readiness import probe_runtime
+from solar.config import load_config
+from solar.data.index import read_index
+from solar.errors import BackendContractError
+from solar.preencode import EncodedPayload, EncoderContract, TensorSpec
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -149,9 +149,9 @@ def _config(
     epoch_repeats: int = 1,
 ) -> dict:
     relative = (
-        "configs/examples/wan22_ti2v_5b/preencode_153f.yaml"
+        "configs/solar_wm/wan22_ti2v_5b/preencode_153f.yaml"
         if family == "wan22_ti2v_5b"
-        else "configs/examples/wan22_i2v_a14b/preencode_153f.yaml"
+        else "configs/solar_wm/wan22_i2v_a14b/preencode_153f.yaml"
     )
     config = load_config(ROOT / relative).mutable_copy()
     raw = tmp_path / "raw-root"

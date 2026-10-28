@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from solarwm.config import load_config
+from solar.config import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
-EXAMPLES = ROOT / "configs" / "examples"
+EXAMPLES = ROOT / "configs" / "solar_wm"
 
 
 def test_all_wan_training_examples_declare_validation_camera_guards() -> None:

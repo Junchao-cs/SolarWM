@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from solarwm.backends.minimax_h3.codec import (
+from solar.backends.minimax_h3.codec import (
     H3EncodedPayload,
     H3PreencodedSample,
     H3RawSample,

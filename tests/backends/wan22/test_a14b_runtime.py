@@ -5,18 +5,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.backends.wan22 import create_backend
-from solarwm.config import load_config
-from solarwm.errors import BackendContractError
+from solar.backends.wan22 import create_backend
+from solar.config import load_config
+from solar.errors import BackendContractError
 
 ROOT = Path(__file__).resolve().parents[3]
-A14B_81F_CONFIG = ROOT / "configs/examples/wan22_i2v_a14b/train_stage0p5_fm_81f.yaml"
-A14B_153F_CONFIG = ROOT / "configs/examples/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml"
+A14B_81F_CONFIG = ROOT / "configs/solar_wm/wan22_i2v_a14b/train_stage0p5_fm_81f.yaml"
+A14B_153F_CONFIG = ROOT / "configs/solar_wm/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml"
 
 
 def test_official_a14b_online_codec_builds_mask_and_condition_latents() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.codec import WanA14BOnlineCodec
+    from solar.backends.wan22.runtime.codec import WanA14BOnlineCodec
 
     class FakeVAE:
         def encode(self, value: object) -> object:
@@ -62,7 +62,7 @@ def test_official_a14b_online_codec_builds_mask_and_condition_latents() -> None:
 
 def test_a14b_vae_uses_post_cast_reciprocal_scale() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanA14BVAE
+    from solar.backends.wan22.runtime.components import WanA14BVAE
 
     vae = object.__new__(WanA14BVAE)
     vae._mean = torch.tensor(WanA14BVAE.mean, dtype=torch.float32)
@@ -75,8 +75,8 @@ def test_a14b_vae_uses_post_cast_reciprocal_scale() -> None:
 
 def test_a14b_vae_decode_reports_nonfinite_input_ranges() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.components import WanA14BVAE
-    from solarwm.errors import BackendContractError
+    from solar.backends.wan22.runtime.components import WanA14BVAE
+    from solar.errors import BackendContractError
 
     class FakeModule:
         def decode(self, value: object) -> object:
@@ -116,7 +116,7 @@ def test_a14b_vae_rejects_non_exact_state_dict(
     torch = pytest.importorskip("torch")
     import diffusers
 
-    from solarwm.backends.wan22.runtime.components import WanA14BVAE
+    from solar.backends.wan22.runtime.components import WanA14BVAE
 
     class TinyVAE(torch.nn.Module):
         def __init__(self) -> None:
@@ -139,10 +139,10 @@ def test_a14b_dual_weights_loader_keeps_live_and_ema_distinct(
     tmp_path: Path,
 ) -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.checkpoint import (
+    from solar.backends.wan22.runtime.checkpoint import (
         load_live_and_ema_weights_checkpoint,
     )
-    from solarwm.training.ema import ShardedEMA
+    from solar.training.ema import ShardedEMA
 
     source = tmp_path / "model.pt"
     live_model = torch.nn.Linear(2, 2)
@@ -194,10 +194,10 @@ def test_a14b_dual_weights_loader_keeps_live_and_ema_distinct(
 
 def test_stage0p5_ema_initialization_sets_live_and_ema(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime.checkpoint import (
+    from solar.backends.wan22.runtime.checkpoint import (
         load_live_and_ema_weights_checkpoint,
     )
-    from solarwm.training.ema import ShardedEMA
+    from solar.training.ema import ShardedEMA
 
     source = tmp_path / "model.pt"
     live_model = torch.nn.Linear(2, 2)
@@ -261,7 +261,7 @@ def test_a14b_stage0p5_public_dispatch_is_wired(
     path: Path,
     encoding: str,
 ) -> None:
-    from solarwm.backends.wan22.runtime import readiness, stage0p5
+    from solar.backends.wan22.runtime import readiness, stage0p5
 
     config = load_config(path).mutable_copy()
     config["data"]["encoding"] = encoding

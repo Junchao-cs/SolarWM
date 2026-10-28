@@ -12,14 +12,14 @@ from typing import ClassVar
 
 import pytest
 
-from solarwm.backends.minimax_h3.flow import make_shifted_schedule
-from solarwm.backends.minimax_h3.layout import H3VisualObservationSpec, build_stage0p5_layout
-from solarwm.backends.minimax_h3.segmented_attention import H3SegmentPlan, segment_attention
-from solarwm.renderer.causal import H3OmniCausalMixin, causal_rows
+from solar.backends.minimax_h3.flow import make_shifted_schedule
+from solar.backends.minimax_h3.layout import H3VisualObservationSpec, build_stage0p5_layout
+from solar.backends.minimax_h3.segmented_attention import H3SegmentPlan, segment_attention
+from solar.renderer.causal import H3OmniCausalMixin, causal_rows
 
 torch = pytest.importorskip("torch")
 
-ADAPTER = Path(__file__).resolve().parents[2] / "reactor/solar_renderer"
+ADAPTER = Path(__file__).resolve().parents[2] / "deploy/solar_renderer/reactor"
 
 
 @pytest.fixture
@@ -166,12 +166,12 @@ def test_text_refiner_cache_accepts_both_renderer_models(reactor_modules, wrappe
 
 @pytest.mark.parametrize("wrapped", [False, True], ids=["merged-native", "legacy-peft"])
 def test_adaln_precomputation_accepts_both_renderer_models(reactor_modules, monkeypatch, wrapped):
-    from solarwm.renderer.causal import CLEAN_LEVEL, STATIC_TIME
+    from solar.renderer.causal import CLEAN_LEVEL, STATIC_TIME
 
     # Only the parameter-dtype helper is needed; the real H3 model would import GPU dependencies.
     monkeypatch.setitem(
         sys.modules,
-        "solarwm.backends.minimax_h3.model",
+        "solar.backends.minimax_h3.model",
         SimpleNamespace(get_parameter_dtype=lambda model: next(model.parameters()).dtype),
     )
 
@@ -228,7 +228,7 @@ def test_adaln_precomputation_accepts_both_renderer_models(reactor_modules, monk
 
 
 def test_fa4_targets_the_integrated_model_attention_entrypoint(reactor_modules, monkeypatch):
-    backend = importlib.import_module("solarwm.backends.minimax_h3")
+    backend = importlib.import_module("solar.backends.minimax_h3")
     model = SimpleNamespace(segment_attention=segment_attention)
     calls = []
 
@@ -253,7 +253,7 @@ def test_fa4_targets_the_integrated_model_attention_entrypoint(reactor_modules, 
 
 def test_staged_source_preserves_assets_and_detects_modified_files(reactor_modules, tmp_path):
     source = tmp_path / "repository"
-    renderer = source / "src/solarwm/renderer"
+    renderer = source / "solar/renderer"
     (renderer / "assets").mkdir(parents=True)
     (renderer / "render.py").write_text("# integrated renderer\n")
     (renderer / "assets/silence.safetensors").write_bytes(b"renderer asset")
@@ -279,14 +279,14 @@ def test_staged_source_preserves_assets_and_detects_modified_files(reactor_modul
     destination = tmp_path / ".solarwm-source"
     provenance = reactor_modules.staging.stage_source(source, destination)
     assert not provenance["solarwm_source_has_local_changes"]
-    assert "src/solarwm/renderer/assets/silence.safetensors" in provenance["files"]
+    assert "solar/renderer/assets/silence.safetensors" in provenance["files"]
     assert json.loads((destination / "provenance.json").read_text()) == provenance
     config = tmp_path / "solarrenderer.yaml"
     config.write_text("source: .solarwm-source\n")
     settings = reactor_modules.assets.read_settings(config, tmp_path / "weights")
     assert settings.source == destination
     assert settings.scratch.is_dir()
-    (destination / "src/solarwm/renderer/render.py").write_text("# changed\n")
+    (destination / "solar/renderer/render.py").write_text("# changed\n")
     with pytest.raises(ValueError, match="Staged source changed"):
         reactor_modules.assets.read_settings(config, tmp_path / "weights")
 
@@ -295,12 +295,12 @@ def test_source_archive_can_stage_without_git_and_cannot_overwrite_source(
     reactor_modules, tmp_path
 ):
     source = tmp_path / "source-archive"
-    renderer = source / "src/solarwm/renderer"
+    renderer = source / "solar/renderer"
     renderer.mkdir(parents=True)
     (renderer / "render.py").write_text("# integrated renderer\n")
     for name in ("LICENSE", "NOTICE"):
         (source / name).write_text(name)
-    for destination in (source, source / "src", renderer):
+    for destination in (source, source / "solar", renderer):
         with pytest.raises(ValueError, match="overwrite"):
             reactor_modules.staging.stage_source(source, destination)
         assert (renderer / "render.py").is_file()

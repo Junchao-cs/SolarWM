@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.config import load_config
-from solarwm.errors import ConfigurationError
-from solarwm.renderer.config import validate_config
-from solarwm.renderer.training import main
+from solar.config import load_config
+from solar.errors import ConfigurationError
+from solar.renderer.config import validate_config
+from solar.renderer.training import main
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIGS = ROOT / "configs" / "solar_renderer"
@@ -108,7 +108,7 @@ def test_resolve_preserves_overrides_and_never_starts_training(
     def fail_training(config):
         pytest.fail("configuration resolution started training")
 
-    monkeypatch.setattr("solarwm.renderer.training.run_control_training", fail_training)
+    monkeypatch.setattr("solar.renderer.training.run_control_training", fail_training)
     assert (
         main(
             [
@@ -134,11 +134,11 @@ def test_resolve_preserves_overrides_and_never_starts_training(
 @pytest.mark.parametrize(
     "module,args",
     [
-        ("solarwm.renderer", ["--help"]),
-        ("solarwm.renderer.prepare_h3", ["--help"]),
-        ("solarwm.renderer.training", ["--help"]),
+        ("solar.renderer", ["--help"]),
+        ("solar.renderer.prepare_h3", ["--help"]),
+        ("solar.renderer.training", ["--help"]),
         (
-            "solarwm.renderer.training",
+            "solar.renderer.training",
             [
                 "--config",
                 str(CONFIGS / "control_lora.yaml"),
@@ -164,7 +164,7 @@ sys.argv = [sys.argv[1], *sys.argv[2:]]
 runpy.run_module(sys.argv[0], run_name='__main__')
 """
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(ROOT / "src")
+    environment["PYTHONPATH"] = str(ROOT)
     result = subprocess.run(
         [sys.executable, "-c", script, module, *args],
         cwd=tmp_path,

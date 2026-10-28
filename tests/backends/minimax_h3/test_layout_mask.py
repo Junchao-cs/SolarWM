@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from solarwm.backends.minimax_h3.layout import (
+from solar.backends.minimax_h3.layout import (
     VIDEO_TAG,
     build_row_timesteps,
     build_stage0p5_layout,
@@ -10,7 +10,7 @@ from solarwm.backends.minimax_h3.layout import (
     patchify_video,
     unpatchify_video,
 )
-from solarwm.backends.minimax_h3.mask import (
+from solar.backends.minimax_h3.mask import (
     build_stage1_window_mask,
     stage0p5_full_attention,
     stage1_window_allows,
@@ -80,7 +80,7 @@ def test_stage1_dense_mask_matches_scalar_window_contract() -> None:
 
 
 def test_six_chunk_window_excludes_old_clean_chunk_but_keeps_own_noisy_chunk() -> None:
-    from solarwm.backends.minimax_h3.layout import CLEAN_VIDEO_ROLE, NOISY_VIDEO_ROLE
+    from solar.backends.minimax_h3.layout import CLEAN_VIDEO_ROLE, NOISY_VIDEO_ROLE
 
     assert not stage1_window_allows(NOISY_VIDEO_ROLE, 6, CLEAN_VIDEO_ROLE, 0, window_chunks=6)
     assert stage1_window_allows(NOISY_VIDEO_ROLE, 6, CLEAN_VIDEO_ROLE, 1, window_chunks=6)

@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.wan22.windows import (
+from solar.backends.wan22.windows import (
     WINDOW_HASH_NAMESPACE_153F,
     expected_153f_window_start,
     write_wan153f_window_index,
 )
-from solarwm.data.index import read_index
-from solarwm.errors import DataContractError
+from solar.data.index import read_index
+from solar.errors import DataContractError
 
 
 def _row(

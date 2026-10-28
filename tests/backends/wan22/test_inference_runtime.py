@@ -8,9 +8,9 @@ from types import MethodType, SimpleNamespace
 import numpy as np
 import pytest
 
-from solarwm.backends.wan22.generation import GenerationPass, resolve_generation_plan
-from solarwm.backends.wan22.runtime import inference as wan_inference
-from solarwm.backends.wan22.runtime.inference import (
+from solar.backends.wan22.generation import GenerationPass, resolve_generation_plan
+from solar.backends.wan22.runtime import inference as wan_inference
+from solar.backends.wan22.runtime.inference import (
     TrainingWanGenerationAdapter,
     WanGenerationSummary,
     _authoritative_publication_c2w,
@@ -30,10 +30,10 @@ from solarwm.backends.wan22.runtime.inference import (
     run_wan_inference,
     run_wan_validation,
 )
-from solarwm.config import load_config
-from solarwm.data.index import IndexRow, select_index_rows
-from solarwm.errors import BackendContractError, DataContractError
-from solarwm.inference import (
+from solar.config import load_config
+from solar.data.index import IndexRow, select_index_rows
+from solar.errors import BackendContractError, DataContractError
+from solar.inference import (
     GeneratedSample,
     InferenceCase,
     InferenceEngine,
@@ -178,7 +178,7 @@ def _build_fixed_validation_cases(
     distributed_context: tuple[object, int, int] | None = None,
     validation_plan_path: Path | None = None,
 ) -> tuple[tuple[InferenceCase, ...], list[int]]:
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
     config["validation"]["sample_count"] = sample_count
     config["validation"]["selection_seed"] = selection_seed
     read_ordinals: list[int] = []
@@ -399,7 +399,7 @@ def test_camera_publication_c2w_is_source_equal_with_float64_cast_only() -> None
 def test_selected_recipe_row_materializes_against_the_complete_test_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
     config["validation"]["sample_count"] = 1
     config["validation"]["selection_seed"] = 0
     rows = tuple(
@@ -466,7 +466,7 @@ def test_selected_recipe_row_materializes_against_the_complete_test_index(
 def test_camera_length_defers_video_decode_and_releases_each_case(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
     config["inference"]["output_layout"] = "transaction_v1"
     config["validation"]["sample_count"] = 2
     rows = _validation_rows(2)
@@ -549,7 +549,7 @@ def test_camera_length_defers_video_decode_and_releases_each_case(
     assert adapter._prepared == {}
     assert len(decodes) == 1
 
-    from solarwm.backends.wan22.runtime import distributed as wan_distributed
+    from solar.backends.wan22.runtime import distributed as wan_distributed
 
     distributed_closes: list[int] = []
     monkeypatch.setattr(wan_distributed, "cleanup_torchrun", lambda: distributed_closes.append(1))
@@ -567,7 +567,7 @@ def test_camera_length_defers_video_decode_and_releases_each_case(
 def test_camera_length_static_condition_decodes_only_the_first_frame(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
     config["inference"]["output_layout"] = "transaction_v1"
     config["validation"]["sample_count"] = 1
     row = IndexRow.from_mapping(
@@ -909,7 +909,7 @@ def test_nonvariable_recipe_start_remains_a_contract_error() -> None:
 def test_validation_rejects_an_unmaterialized_input(
     tmp_path: Path,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage1_tf_anyflow_v1_5_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage1_tf_anyflow_v1_5_81f.yaml")
     invalid = InferenceCase(
         slot=0,
         sample_id="unmaterialized",
@@ -938,22 +938,22 @@ def test_validation_rejects_an_unmaterialized_input(
     ("relative", "family", "frames"),
     (
         (
-            "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
+            "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml",
             "wan22_ti2v_5b",
             21,
         ),
         (
-            "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml",
+            "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml",
             "wan22_ti2v_5b",
             39,
         ),
         (
-            "configs/examples/wan22_i2v_a14b/train_stage0p5_fm_81f.yaml",
+            "configs/solar_wm/wan22_i2v_a14b/train_stage0p5_fm_81f.yaml",
             "wan22_i2v_a14b",
             21,
         ),
         (
-            "configs/examples/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml",
+            "configs/solar_wm/wan22_i2v_a14b/train_stage0p5_fm_153f.yaml",
             "wan22_i2v_a14b",
             39,
         ),
@@ -984,7 +984,7 @@ def test_fake_provider_routes_both_families_and_frame_lengths(
 
 
 def test_inference_and_validation_use_the_same_runner_contract(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     left = FakeProvider("wan22_i2v_a14b")
     right = FakeProvider("wan22_i2v_a14b")
     inference = run_wan_inference(
@@ -1010,9 +1010,9 @@ def test_inference_and_validation_use_the_same_runner_contract(tmp_path: Path) -
 
 
 def test_validation_publishes_compare_layout(tmp_path: Path) -> None:
-    from solarwm.backends.wan22.generation import resolve_generation_plan
+    from solar.backends.wan22.generation import resolve_generation_plan
 
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     plan = resolve_generation_plan(config)
     target = tmp_path / "validation" / "step-000020"
     generation_pass = plan.passes[0]
@@ -1072,7 +1072,7 @@ def test_validation_publishes_compare_layout(tmp_path: Path) -> None:
 
 
 def test_training_validation_exposes_only_public_views_after_success(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     run_root = tmp_path / "run"
     config["runtime"]["output_dir"] = str(run_root)
     target = run_root / "validation/.staging/step-000020"
@@ -1094,7 +1094,7 @@ def test_training_validation_exposes_only_public_views_after_success(tmp_path: P
 
 
 def test_failed_training_validation_retains_private_staging(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     run_root = tmp_path / "run"
     config["runtime"]["output_dir"] = str(run_root)
     target = run_root / "validation/.staging/step-000020"
@@ -1157,7 +1157,7 @@ def test_comparison_manifest_preserves_multiwave_round_identity(tmp_path: Path) 
 
 
 def test_failed_pass_never_commits_generation_complete(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/infer_stage1_tf_anyflow_v1_5_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/infer_stage1_tf_anyflow_v1_5_81f.yaml")
     provider = FakeProvider("wan22_ti2v_5b", fail_pass="ema_nfe50_autoregressive")
     target = tmp_path / "failed"
     with pytest.raises(BackendContractError, match="injected generation failure"):
@@ -1172,7 +1172,7 @@ def test_failed_pass_never_commits_generation_complete(tmp_path: Path) -> None:
 
 
 def test_sampler_cannot_drift_from_training_stage(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     config["validation"]["passes"][0]["mode"] = "autoregressive"
     with pytest.raises(BackendContractError, match="does not match stage0p5"):
         run_wan_generation(
@@ -1185,7 +1185,7 @@ def test_sampler_cannot_drift_from_training_stage(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("name", ("../escape", "/absolute", "nested/pass", r"win\\pass"))
 def test_generation_pass_name_cannot_escape_output_tree(tmp_path: Path, name: str) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     config["validation"]["passes"][0]["name"] = name
     with pytest.raises(BackendContractError, match="portable path components"):
         run_wan_generation(
@@ -1198,7 +1198,7 @@ def test_generation_pass_name_cannot_escape_output_tree(tmp_path: Path, name: st
 
 
 def test_existing_generation_output_is_never_overwritten(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     target = tmp_path / "existing"
     target.mkdir()
     with pytest.raises(BackendContractError, match="already exists"):
@@ -1211,7 +1211,7 @@ def test_existing_generation_output_is_never_overwritten(tmp_path: Path) -> None
 
 
 def test_checkpoint_directory_requires_a_complete_transaction(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     checkpoint = tmp_path / "checkpoint"
     checkpoint.mkdir()
     (checkpoint / "model.pt").write_bytes(b"uncommitted")
@@ -1221,7 +1221,7 @@ def test_checkpoint_directory_requires_a_complete_transaction(tmp_path: Path) ->
 
 
 def test_cli_runtime_controls_and_generation_tree_do_not_collide(tmp_path: Path) -> None:
-    config = _config("configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml")
     runtime = tmp_path / "run"
     runtime.mkdir()
     (runtime / "launch-manifest.json").write_text("{}\n")
@@ -1239,7 +1239,7 @@ def test_cli_runtime_controls_and_generation_tree_do_not_collide(tmp_path: Path)
 def test_camera_inference_default_publishes_dataset_triplets_and_keeps_run_transaction(
     tmp_path: Path,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
     config["runtime"]["output_dir"] = str(tmp_path)
     config["inference"]["run_id"] = "sekai-fix-canary"
     config["validation"]["sample_count"] = 1
@@ -1287,7 +1287,7 @@ def test_camera_dataset_layout_rejects_node_local_multinode_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/infer_stage2_sgf_camera_length.yaml")
     config["runtime"]["output_dir"] = str(tmp_path)
     monkeypatch.setenv("NNODES", "2")
     monkeypatch.setattr(
@@ -1306,7 +1306,7 @@ def test_camera_dataset_layout_rejects_node_local_multinode_output(
 
 @pytest.mark.parametrize("shift", (3.0, 5.0))
 def test_release_unipc_matches_wan_flow_grid(shift: float) -> None:
-    from solarwm.backends.wan22.runtime.scheduler import (
+    from solar.backends.wan22.runtime.scheduler import (
         build_wan_flow_unipc_scheduler,
     )
 
@@ -1408,8 +1408,8 @@ def test_camera_length_plan_holds_only_the_chunk_alignment_tail() -> None:
 
 
 def test_source_variable_pass_keeps_collective_max_and_records_trim() -> None:
-    from solarwm.backends.wan22.generation import GenerationPass
-    from solarwm.backends.wan22.runtime.inference import _pass_case
+    from solar.backends.wan22.generation import GenerationPass
+    from solar.backends.wan22.runtime.inference import _pass_case
 
     generation_pass = GenerationPass(
         name="source_length",
@@ -1436,7 +1436,7 @@ def test_source_variable_pass_keeps_collective_max_and_records_trim() -> None:
 
 
 def test_camera_length_pass_runs_the_resolved_chunk_aligned_horizon() -> None:
-    from solarwm.backends.wan22.runtime.inference import _pass_case
+    from solar.backends.wan22.runtime.inference import _pass_case
 
     generation_pass = GenerationPass(
         name="model_self_forcing_nfe4",
@@ -1518,8 +1518,8 @@ def test_cuda_adapter_admits_multiple_logical_dp_groups(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.backends.wan22.runtime import components, inference
-    from solarwm.backends.wan22.runtime import distributed as wan_distributed
+    from solar.backends.wan22.runtime import components, inference
+    from solar.backends.wan22.runtime import distributed as wan_distributed
 
     class _Movable:
         def eval(self) -> _Movable:
@@ -1652,9 +1652,9 @@ def _runtime_case(weights: str) -> InferenceCase:
 
 def test_training_adapter_swaps_ema_and_restores_live_training_state() -> None:
     torch = pytest.importorskip("torch")
-    from solarwm.training.ema import ShardedEMA
+    from solar.training.ema import ShardedEMA
 
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
     module = torch.nn.Linear(1, 1, bias=False)
     module.weight.data.fill_(2.0)
     module.train()
@@ -1714,7 +1714,7 @@ def test_training_adapter_swaps_ema_and_restores_live_training_state() -> None:
 
 
 def test_preencoded_runtime_cannot_claim_inline_raw_validation() -> None:
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_153f.yaml")
     runtime = SimpleNamespace(codec=None, config=config)
     with pytest.raises(BackendContractError, match="preencoded-only training"):
         TrainingWanGenerationAdapter(runtime)
@@ -1723,10 +1723,10 @@ def test_preencoded_runtime_cannot_claim_inline_raw_validation() -> None:
 def test_stage0p5_runtime_validate_calls_the_common_generation_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import solarwm.backends.wan22.runtime.inference as inference_module
-    from solarwm.backends.wan22.runtime.stage0p5 import Wan5BStage0p5Runtime
+    import solar.backends.wan22.runtime.inference as inference_module
+    from solar.backends.wan22.runtime.stage0p5 import Wan5BStage0p5Runtime
 
-    config = _config("configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
+    config = _config("configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml")
     config["runtime"]["output_dir"] = str(tmp_path / "run")
     runtime = Wan5BStage0p5Runtime.__new__(Wan5BStage0p5Runtime)
     runtime.config = config

@@ -12,15 +12,15 @@ import numpy as np
 import pytest
 import yaml
 
-from solarwm.backends.minimax_h3.config import validate_h3_config
-from solarwm.errors import (
+from solar.backends.minimax_h3.config import validate_h3_config
+from solar.errors import (
     BackendContractError,
     CheckpointError,
     ConfigurationError,
     DataContractError,
 )
 
-EXAMPLES = Path(__file__).resolve().parents[3] / "configs/examples/minimax_h3"
+EXAMPLES = Path(__file__).resolve().parents[3] / "configs/solar_wm/minimax_h3"
 
 
 def _config(stage):
@@ -69,7 +69,7 @@ def test_causal_inference_examples_use_the_training_contract(stage):
 
 def _lora():
     torch = pytest.importorskip("torch")
-    from solarwm.backends.minimax_h3.lora import H3LoRARuntime
+    from solar.backends.minimax_h3.lora import H3LoRARuntime
 
     model = torch.nn.Linear(2, 2, bias=False, dtype=torch.bfloat16)
     lora = H3LoRARuntime(
@@ -90,11 +90,11 @@ def test_sgf_checkpoint_restores_both_optimizers_rng_reader_and_delayed_ema(
     tmp_path, monkeypatch, step
 ):
     torch = pytest.importorskip("torch")
-    from solarwm.backends.minimax_h3.ema import H3ShardedEMA
-    from solarwm.backends.minimax_h3.optimizer import FP32MasterAdamW
-    from solarwm.backends.minimax_h3.runtime import H3TrainingRuntime, _checkpoint_contract
-    from solarwm.backends.minimax_h3.stage2_runtime import H3SGFTrainingRuntime
-    from solarwm.checkpoint import verify_checkpoint
+    from solar.backends.minimax_h3.ema import H3ShardedEMA
+    from solar.backends.minimax_h3.optimizer import FP32MasterAdamW
+    from solar.backends.minimax_h3.runtime import H3TrainingRuntime, _checkpoint_contract
+    from solar.backends.minimax_h3.stage2_runtime import H3SGFTrainingRuntime
+    from solar.checkpoint import verify_checkpoint
 
     monkeypatch.setattr(torch.cuda, "get_rng_state", lambda device: torch.get_rng_state())
     monkeypatch.setattr(torch.cuda, "set_rng_state", lambda value, device: None)
@@ -169,7 +169,7 @@ def test_sgf_checkpoint_restores_both_optimizers_rng_reader_and_delayed_ema(
 
 def test_stage_transition_validates_all_tensors_before_mutation(tmp_path):
     torch = pytest.importorskip("torch")
-    from solarwm.backends.minimax_h3.weights import load_initial_weights
+    from solar.backends.minimax_h3.weights import load_initial_weights
 
     (tmp_path / "COMPLETE.json").write_text("{}")
     (tmp_path / "checkpoint-manifest.json").write_text(
@@ -211,8 +211,8 @@ def test_stage_transition_validates_all_tensors_before_mutation(tmp_path):
 def test_stage2_checkpoint_rejects_changed_teacher_before_resume():
     from dataclasses import replace
 
-    from solarwm.backends.minimax_h3.runtime import _checkpoint_contract
-    from solarwm.checkpoint import assert_resume_compatible
+    from solar.backends.minimax_h3.runtime import _checkpoint_contract
+    from solar.checkpoint import assert_resume_compatible
 
     contract = _checkpoint_contract(
         encoder_profile={}, silence_profile={}, base_model={}, config=_config("stage2")
@@ -233,8 +233,8 @@ def test_stage2_checkpoint_rejects_changed_teacher_before_resume():
 def test_validation_camera_cadence_and_tail_are_audited(tmp_path, stage):
     torch = pytest.importorskip("torch")
     save_file = pytest.importorskip("safetensors.torch").save_file
-    from solarwm.backends.minimax_h3.geometry import latent_aligned_pixel_indices
-    from solarwm.backends.minimax_h3.validation_inputs import _load_cameras
+    from solar.backends.minimax_h3.geometry import latent_aligned_pixel_indices
+    from solar.backends.minimax_h3.validation_inputs import _load_cameras
 
     count = 170 if stage == "stage1" else 47
     views = torch.eye(4).repeat(count, 1, 1)

@@ -7,15 +7,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from solarwm.backends.wan22.runtime import publication
-from solarwm.backends.wan22.runtime.publication import (
+from solar.backends.wan22.runtime import publication
+from solar.backends.wan22.runtime.publication import (
     preflight_camera_publication,
     publish_camera_triplets,
 )
-from solarwm.errors import BackendContractError
-from solarwm.inference import GeneratedSample, InferenceCase, InferenceEngine
-from solarwm.runtime.output_layout import CameraInferenceOutputLayout
-from solarwm.runtime.serialization import canonical_json_bytes
+from solar.errors import BackendContractError
+from solar.inference import GeneratedSample, InferenceCase, InferenceEngine
+from solar.runtime.output_layout import CameraInferenceOutputLayout
+from solar.runtime.serialization import canonical_json_bytes
 
 
 class _Adapter:

@@ -5,12 +5,12 @@ from dataclasses import replace
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.artifacts import H3ArtifactBatch, H3VisualObservation
-from solarwm.backends.minimax_h3.flow import make_shifted_schedule
-from solarwm.backends.minimax_h3.segmented_attention import segment_attention
-from solarwm.renderer.causal import H3OmniCausalCore
-from solarwm.renderer.core import H3Stage0p5Core
-from solarwm.renderer.observations import observation_profile_from_train_config
+from solar.backends.minimax_h3.artifacts import H3ArtifactBatch, H3VisualObservation
+from solar.backends.minimax_h3.flow import make_shifted_schedule
+from solar.backends.minimax_h3.segmented_attention import segment_attention
+from solar.renderer.causal import H3OmniCausalCore
+from solar.renderer.core import H3Stage0p5Core
+from solar.renderer.observations import observation_profile_from_train_config
 
 
 class PackedModel(torch.nn.Module):

@@ -4,7 +4,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from solarwm.training.optim import (  # noqa: E402
+from solar.training.optim import (  # noqa: E402
     FP32_MASTER_ADAMW_SCHEMA,
     FP32MasterAdamW,
 )

@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE))
 
 import bench  # noqa: E402
 
-from solarwm.renderer import render  # noqa: E402
+from solar.renderer import render  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> None:

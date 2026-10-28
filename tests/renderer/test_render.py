@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.lora import merge_lora_delta
-from solarwm.renderer import render
+from solar.backends.minimax_h3.lora import merge_lora_delta
+from solar.renderer import render
 
 
 @pytest.mark.parametrize(
@@ -73,8 +73,8 @@ def test_stacked_loras_preserve_each_adapter_rank_and_alpha():
 
 @pytest.mark.parametrize("frames", [158, 243])
 def test_renderer_loads_merged_weights_and_duration_matched_silence(monkeypatch, frames):
-    from solarwm.backends.minimax_h3 import artifacts, optional
-    from solarwm.renderer import core
+    from solar.backends.minimax_h3 import artifacts, optional
+    from solar.renderer import core
 
     real_core = core.H3Stage0p5Core
     model = torch.nn.Sequential(torch.nn.Linear(1, 1, bias=False, dtype=torch.bfloat16))
@@ -133,7 +133,7 @@ def test_cli_rejects_invalid_durations(tmp_path, seconds):
 
 
 def test_main_propagates_duration_and_releases_encoder_before_model(tmp_path, monkeypatch):
-    from solarwm.renderer import preencode
+    from solar.renderer import preencode
 
     events = []
     monkeypatch.setattr(preencode, "frame_count", lambda _: 2000)
@@ -171,8 +171,8 @@ def test_main_propagates_duration_and_releases_encoder_before_model(tmp_path, mo
 
 @pytest.mark.parametrize("keep,expected", [(0, 243), (240, 240)])
 def test_video_writer_crops_to_requested_duration(tmp_path, monkeypatch, keep, expected):
-    from solarwm.backends.minimax_h3 import inference
-    from solarwm.renderer import data
+    from solar.backends.minimax_h3 import inference
+    from solar.renderer import data
 
     monkeypatch.setattr(data.H3OmniReader, "read", lambda *a: "batch")
     monkeypatch.setattr(torch.cuda, "synchronize", lambda _: None)

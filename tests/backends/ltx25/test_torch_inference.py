@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.backends.ltx25.torch_inference import (
+from solar.backends.ltx25.torch_inference import (
     _finite_generation_metrics,
     inference_cases,
 )
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 class _Source:

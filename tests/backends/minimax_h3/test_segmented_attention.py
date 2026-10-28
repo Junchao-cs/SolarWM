@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.minimax_h3.distributed import validate_packed_attention_mask
-from solarwm.backends.minimax_h3.segmented_attention import H3SegmentPlan
+from solar.backends.minimax_h3.distributed import validate_packed_attention_mask
+from solar.backends.minimax_h3.segmented_attention import H3SegmentPlan
 
 
 def test_segment_plan_subclasses_keep_the_global_sequence_contract():
@@ -35,18 +35,18 @@ class RestrictedImports(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
         if fullname == 'torch' or fullname.startswith('torch.'):
             raise AssertionError('attention contracts imported torch')
-        if fullname == 'solarwm.renderer' or fullname.startswith('solarwm.renderer.'):
+        if fullname == 'solar.renderer' or fullname.startswith('solar.renderer.'):
             raise AssertionError('H3 backend imported the renderer extension')
 
 sys.meta_path.insert(0, RestrictedImports())
-from solarwm.backends.minimax_h3.distributed import validate_packed_attention_mask
-from solarwm.backends.minimax_h3.segmented_attention import H3ChunkKVCache, H3SegmentPlan
+from solar.backends.minimax_h3.distributed import validate_packed_attention_mask
+from solar.backends.minimax_h3.segmented_attention import H3ChunkKVCache, H3SegmentPlan
 
 plan = H3SegmentPlan(((0, 2, ((0, 2),), (), None),), 2, H3ChunkKVCache())
 validate_packed_attention_mask(None, total_tokens=2)
 validate_packed_attention_mask(plan, total_tokens=2)
 assert not any(name == 'torch' or name.startswith('torch.') for name in sys.modules)
-assert not any(name.startswith('solarwm.renderer') for name in sys.modules)
+assert not any(name.startswith('solar.renderer') for name in sys.modules)
 """
     result = subprocess.run(
         [sys.executable, "-c", script],

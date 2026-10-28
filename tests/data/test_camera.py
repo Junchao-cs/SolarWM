@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from solarwm.data.camera import (
+from solar.data.camera import (
     CameraGuards,
     camera_audit_prefix_frames,
     causal_pixel_indices,
@@ -12,7 +12,7 @@ from solarwm.data.camera import (
     relative_w2c,
     transform_translation,
 )
-from solarwm.errors import DataContractError
+from solar.errors import DataContractError
 
 
 def _trajectory() -> np.ndarray:

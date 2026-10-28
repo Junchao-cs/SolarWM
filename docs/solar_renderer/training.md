@@ -2,7 +2,7 @@
 
 Adapted from the upstream [training guide at revision
 `e018b0f`](https://github.com/Enderfga/SolarRenderer/blob/e018b0f673de865711fe99844d3976865722b8d0/docs/training.md),
-using the integrated `solarwm.renderer` APIs and configurations. The
+using the integrated `solar.renderer` APIs and configurations. The
 [integrated tutorial](README.md) remains the end-to-end reference.
 
 ## Prerequisites and resources
@@ -36,7 +36,7 @@ export RENDERER_RUNS="$SOLAR_RENDERER_ROOT/runs"
 
 hf download Enderfga/SolarRenderer-Data --repo-type dataset \
   --include "train/*" --local-dir "$RENDERER_DATA/SolarRenderer-Data"
-python -m solarwm.renderer.hf_samples \
+python -m solar.renderer.hf_samples \
   --data "$RENDERER_DATA/SolarRenderer-Data" \
   --out "$RENDERER_DATA/samples"
 ```
@@ -55,7 +55,7 @@ one worker per GPU:
 
 ```bash
 H3_REF_ROOT="$H3_ROOT" torchrun --standalone --nproc-per-node=8 \
-  -m solarwm.renderer.preencode \
+  -m solar.renderer.preencode \
   --samples "$RENDERER_DATA/samples/samples.jsonl" \
   --out "$RENDERER_DATA/encoded"
 cat "$RENDERER_DATA"/encoded/index.*.jsonl \
@@ -89,7 +89,7 @@ are rejected before loading the model.
 Inspect a recipe without starting training:
 
 ```bash
-python -m solarwm.renderer.training \
+python -m solar.renderer.training \
   --config configs/solar_renderer/control_lora.yaml --resolve
 ```
 
@@ -99,7 +99,7 @@ the shared model and data paths for each stage:
 ```bash
 renderer_train() {
   torchrun --standalone --nproc-per-node=8 \
-    -m solarwm.renderer.training \
+    -m solar.renderer.training \
     --set model.checkpoint_path="$H3_ROOT" \
     --set data.omni_root="$RENDERER_DATA/encoded" \
     --set data.omni_index="$RENDERER_DATA/encoded/train.jsonl" \
@@ -117,7 +117,7 @@ renderer_train \
   --set runtime.output_dir="$RENDERER_RUNS/control_lora"
 
 export CONTROL_CHECKPOINT="$RENDERER_RUNS/control_lora/checkpoint_model_038400"
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$CONTROL_CHECKPOINT" \
   --out "$RENDERER_WEIGHTS/my_control_lora.safetensors"
 ```
@@ -131,7 +131,7 @@ with structure guidance. The control checkpoint stays frozen:
 hf download ZhengmingYu/DMAD \
   minimax_h3/dmad_minimax_h3_4step_lora_critic.safetensors \
   --local-dir "$SOLAR_RENDERER_ROOT/dmad"
-python -m solarwm.renderer.convert_dmad \
+python -m solar.renderer.convert_dmad \
   --h3 "$H3_ROOT" \
   --src "$SOLAR_RENDERER_ROOT/dmad/minimax_h3/dmad_minimax_h3_4step_lora_critic.safetensors" \
   --out "$RENDERER_WEIGHTS/dmad_4step_lora.safetensors"
@@ -142,7 +142,7 @@ renderer_train \
   --set train.dmd.control="$CONTROL_CHECKPOINT" \
   --set runtime.output_dir="$RENDERER_RUNS/structure_guided_4step"
 
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$RENDERER_RUNS/structure_guided_4step/checkpoint_model_000800" \
   --out "$RENDERER_WEIGHTS/my_4step_lora.safetensors"
 ```
@@ -163,7 +163,7 @@ renderer_train \
   --set runtime.output_dir="$RENDERER_RUNS/causal_control_lora"
 
 export CAUSAL_CONTROL_CHECKPOINT="$RENDERER_RUNS/causal_control_lora/checkpoint_model_019200"
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$CAUSAL_CONTROL_CHECKPOINT" \
   --out "$RENDERER_WEIGHTS/my_causal_control_lora.safetensors"
 ```
@@ -182,7 +182,7 @@ renderer_train \
   --set train.dmd.control="$CONTROL_CHECKPOINT" \
   --set runtime.output_dir="$RENDERER_RUNS/causal_structure_guided_4step"
 
-python -m solarwm.renderer.export_lora \
+python -m solar.renderer.export_lora \
   --checkpoint "$RENDERER_RUNS/causal_structure_guided_4step/checkpoint_model_001600" \
   --out "$RENDERER_WEIGHTS/my_causal_4step_lora.safetensors"
 ```

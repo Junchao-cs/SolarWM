@@ -5,20 +5,20 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from solarwm.backends.ltx25.artifact import (
+from solar.backends.ltx25.artifact import (
     PREENCODE_VERSION,
     TENSOR_SPECS,
     PreencodedSample,
     TensorArtifact,
     artifact_contract,
 )
-from solarwm.backends.ltx25.codec import (
+from solar.backends.ltx25.codec import (
     ONLINE_BEHAVIOR_STATUS,
     RawSample,
     encode_online,
     online_behavior_contract,
 )
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 def _bf16(name: str, *, fill: int = 0) -> TensorArtifact:

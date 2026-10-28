@@ -3,13 +3,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from solarwm.backends.wan22.sgf import (
+from solar.backends.wan22.sgf import (
     compute_kl_gradient_array,
     should_update_student,
     student_update_steps,
     validate_checkpoint_transaction,
 )
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 def test_student_update_schedule_warms_critic_first() -> None:

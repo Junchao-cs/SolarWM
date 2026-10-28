@@ -6,17 +6,17 @@ import numpy as np
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.artifacts import H3CameraFilterError, align_h3_camera
-from solarwm.backends.minimax_h3.layout import build_stage1_layout
-from solarwm.backends.minimax_h3.mask import build_stage1_window_mask
-from solarwm.backends.minimax_h3.sgf import h3_sgf_schedule, h3_sgf_windows
-from solarwm.backends.minimax_h3.sgf_attention import (
+from solar.backends.minimax_h3.artifacts import H3CameraFilterError, align_h3_camera
+from solar.backends.minimax_h3.layout import build_stage1_layout
+from solar.backends.minimax_h3.mask import build_stage1_window_mask
+from solar.backends.minimax_h3.sgf import h3_sgf_schedule, h3_sgf_windows
+from solar.backends.minimax_h3.sgf_attention import (
     H3RawKVCache,
     H3SGFAttention,
     prepare_sgf_rotaries,
 )
-from solarwm.backends.minimax_h3.torch_mask import build_stage1_w6_block_mask
-from solarwm.training.sgf import compute_sgf_kl_gradient, sgf_student_loss, should_update_student
+from solar.backends.minimax_h3.torch_mask import build_stage1_w6_block_mask
+from solar.training.sgf import compute_sgf_kl_gradient, sgf_student_loss, should_update_student
 
 
 def test_stage1_direct_sparse_mask_preserves_visibility_across_sliding_boundary() -> None:

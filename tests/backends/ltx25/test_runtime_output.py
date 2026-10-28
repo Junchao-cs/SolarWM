@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from solarwm.backends.ltx25.runtime import (
+from solar.backends.ltx25.runtime import (
     VerifiedTrainingRuntime,
     _host_rng_state,
     _restore_host_rng_state,
@@ -26,9 +26,9 @@ def test_verified_runtime_preserves_relative_checkpoint_compatibility(
         observed.append(path)
         return SimpleNamespace(step=20, manifest_digest="a" * 64)
 
-    monkeypatch.setattr("solarwm.backends.ltx25.runtime.verify_checkpoint", verify)
+    monkeypatch.setattr("solar.backends.ltx25.runtime.verify_checkpoint", verify)
     monkeypatch.setattr(
-        "solarwm.backends.ltx25.runtime.validate_ltx_checkpoint",
+        "solar.backends.ltx25.runtime.validate_ltx_checkpoint",
         lambda *_args, **_kwargs: None,
     )
     runtime = VerifiedTrainingRuntime(

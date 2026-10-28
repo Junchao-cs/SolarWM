@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.training.schedule import warmup_cosine_factor
+from solar.errors import BackendContractError
+from solar.training.schedule import warmup_cosine_factor
 
 
 def test_warmup_cosine_matches_formula() -> None:

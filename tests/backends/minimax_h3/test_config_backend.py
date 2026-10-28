@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from solarwm.backends import load_backend
-from solarwm.backends.minimax_h3.config import validate_h3_config
-from solarwm.config import load_config
-from solarwm.errors import ConfigurationError
+from solar.backends import load_backend
+from solar.backends.minimax_h3.config import validate_h3_config
+from solar.config import load_config
+from solar.errors import ConfigurationError
 
 ROOT = Path(__file__).resolve().parents[3]
-EXAMPLE = ROOT / "configs/examples/minimax_h3/stage0p5-158f-lora384-sp2.yaml"
-PREENCODE = ROOT / "configs/examples/minimax_h3/preencode-158f.yaml"
-INFER = ROOT / "configs/examples/minimax_h3/infer-158f-lora384-sp2.yaml"
+EXAMPLE = ROOT / "configs/solar_wm/minimax_h3/stage0p5-158f-lora384-sp2.yaml"
+PREENCODE = ROOT / "configs/solar_wm/minimax_h3/preencode-158f.yaml"
+INFER = ROOT / "configs/solar_wm/minimax_h3/infer-158f-lora384-sp2.yaml"
 
 
 def _config() -> dict[str, object]:
@@ -155,7 +155,7 @@ def test_backend_runtime_entries_delegate_lazily(monkeypatch: pytest.MonkeyPatch
     config = _config()
     backend = load_backend("minimax_h3")
     backend.validate_config(config)
-    from solarwm.backends.minimax_h3 import preencode_runner, runtime
+    from solar.backends.minimax_h3 import preencode_runner, runtime
 
     calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
@@ -226,7 +226,7 @@ def guarded(name, *args, **kwargs):
         raise AssertionError('H3 contract plugin imported torch')
     return real_import(name, *args, **kwargs)
 builtins.__import__ = guarded
-from solarwm.backends import load_backend
+from solar.backends import load_backend
 backend = load_backend('minimax_h3')
 assert backend.family == 'minimax_h3'
 """

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.runtime.distributed import (
+from solar.errors import BackendContractError
+from solar.runtime.distributed import (
     DataReadiness,
     assert_peer_fingerprints,
     gather_and_assert_sp_identity,

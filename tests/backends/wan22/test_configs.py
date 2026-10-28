@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.wan22 import create_backend
-from solarwm.config import load_config
-from solarwm.errors import BackendContractError
+from solar.backends.wan22 import create_backend
+from solar.config import load_config
+from solar.errors import BackendContractError
 
 ROOT = Path(__file__).resolve().parents[3]
-EXAMPLES = ROOT / "configs" / "examples"
+EXAMPLES = ROOT / "configs" / "solar_wm"
 WAN_TRAINING_EXAMPLES = (
     EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_153f.yaml",
     EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_81f.yaml",
@@ -285,7 +285,7 @@ def test_ti2v_480p_preencoded_81f_profile_is_supported() -> None:
 def test_ti2v_480p_preencoded_81f_dispatch_is_wired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import readiness, stage0p5
+    from solar.backends.wan22.runtime import readiness, stage0p5
 
     path = EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_81f.yaml"
     config = load_config(path).mutable_copy()
@@ -363,7 +363,7 @@ def test_153f_cached_recipe_can_select_online_codec_without_schema_drift() -> No
 def test_ti2v_153f_resume_can_select_the_online_codec_and_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from solarwm.backends.wan22.runtime import readiness, stage0p5
+    from solar.backends.wan22.runtime import readiness, stage0p5
 
     path = EXAMPLES / "wan22_ti2v_5b" / "train_stage0p5_fm_153f.yaml"
     config = load_config(path).mutable_copy()

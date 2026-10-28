@@ -26,7 +26,7 @@ def benchmark(monkeypatch):
 def test_benchmark_uses_integrated_renderer_and_keeps_split_outputs(
     benchmark, monkeypatch, tmp_path
 ):
-    from solarwm.renderer import render
+    from solar.renderer import render
 
     assert benchmark.render is render
     cases = [
@@ -139,7 +139,7 @@ def test_eval_cli_help_from_outside_repository(script, tmp_path):
     result = subprocess.run(
         [sys.executable, str(EVAL / f"{script}.py"), "--help"],
         cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
         capture_output=True,
         text=True,
         timeout=30,

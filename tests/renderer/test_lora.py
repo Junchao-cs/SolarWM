@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.lora import merge_lora_delta, seed_lora_from_released
-from solarwm.errors import BackendContractError
+from solar.backends.minimax_h3.lora import merge_lora_delta, seed_lora_from_released
+from solar.errors import BackendContractError
 
 
 def test_merge_matches_explicit_lora_forward():

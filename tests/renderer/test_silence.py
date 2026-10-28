@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from solarwm.renderer.silence import extend_silence
+from solar.renderer.silence import extend_silence
 
 
 @pytest.mark.parametrize("length", [255, 263, 283])

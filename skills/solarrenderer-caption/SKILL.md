@@ -53,7 +53,7 @@ Define only the inputs actually given, and never use a label that is not defined
 
 The SolarWM rendering command requires a structure video: use `full` for structure plus a first frame, or
 `structure` for structure alone. The `first` and `text` modes remain available for upstream training-caption
-workflows; they are not input modes of `python -m solarwm.renderer`.
+workflows; they are not input modes of `python -m solar.renderer`.
 
 ## The structure sentence
 

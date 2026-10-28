@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from solarwm.backends.minimax_h3 import preencode_runner
-from solarwm.errors import DataContractError
-from solarwm.runtime.create_only import publish_directory_no_replace
+from solar.backends.minimax_h3 import preencode_runner
+from solar.errors import DataContractError
+from solar.runtime.create_only import publish_directory_no_replace
 
 
 def test_h3_last_moment_target_is_never_overwritten(

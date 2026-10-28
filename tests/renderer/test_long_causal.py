@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.artifacts import H3VisualObservation
-from solarwm.backends.minimax_h3.flow import make_shifted_schedule
-from solarwm.renderer.causal import H3OmniCausalCore
+from solar.backends.minimax_h3.artifacts import H3VisualObservation
+from solar.backends.minimax_h3.flow import make_shifted_schedule
+from solar.renderer.causal import H3OmniCausalCore
 
 
 class RecordingModel:

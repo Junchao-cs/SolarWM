@@ -11,7 +11,12 @@ _REPOSITORY = Path(__file__).resolve().parents[2]
 
 def test_every_torch_load_in_public_runtime_is_weights_only() -> None:
     failures: list[str] = []
-    for source in sorted((_REPOSITORY / "src").rglob("*.py")):
+    sources = [
+        source
+        for root in ("solar", "deploy/solar_wm")
+        for source in (_REPOSITORY / root).rglob("*.py")
+    ]
+    for source in sorted(sources):
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.cli import main
-from solarwm.runtime.gcs_upload import ObjectInfo, PublicationError
-from solarwm.runtime.validation_publish import ValidationPublisher
+from solar.cli import main
+from solar.runtime.gcs_upload import ObjectInfo, PublicationError
+from solar.runtime.validation_publish import ValidationPublisher
 
 PASS = "validation/step_000200_live"
 
@@ -257,7 +257,7 @@ def test_local_marker_is_required_and_cannot_change_after_upload(tmp_path):
 
 def test_cli_once_exit_codes_and_no_gpu_requirement(tmp_path, monkeypatch, capsys):
     store = MemoryStore()
-    monkeypatch.setattr("solarwm.runtime.gcs_upload.GCSStore", lambda _destination: store)
+    monkeypatch.setattr("solar.runtime.gcs_upload.GCSStore", lambda _destination: store)
     args = [
         "publish-validation",
         "--run-dir",
@@ -281,7 +281,7 @@ def test_cli_once_exit_codes_and_no_gpu_requirement(tmp_path, monkeypatch, capsy
 
 def test_cli_watch_retries_without_repeating_status(tmp_path, monkeypatch, capsys):
     store = MemoryStore()
-    monkeypatch.setattr("solarwm.runtime.gcs_upload.GCSStore", lambda _destination: store)
+    monkeypatch.setattr("solar.runtime.gcs_upload.GCSStore", lambda _destination: store)
     calls = []
 
     def sleep(_seconds):

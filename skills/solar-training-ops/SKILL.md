@@ -31,13 +31,13 @@ Do not turn a diagnosis-only request into a restart or code change.
 
 Read the document for the selected backend before acting:
 
-- [Wan 2.2 TI2V-5B](../../docs/solarwm/backends/wan22-ti2v-5b.md)
-- [Wan 2.2 I2V-A14B](../../docs/solarwm/backends/wan22-i2v-a14b.md)
-- [LTX-2.5](../../docs/solarwm/backends/ltx25.md)
-- [MiniMax-H3](../../docs/solarwm/backends/minimax-h3.md)
+- [Wan 2.2 TI2V-5B](../../docs/solar_wm/backends/wan22-ti2v-5b.md)
+- [Wan 2.2 I2V-A14B](../../docs/solar_wm/backends/wan22-i2v-a14b.md)
+- [LTX-2.5](../../docs/solar_wm/backends/ltx25.md)
+- [MiniMax-H3](../../docs/solar_wm/backends/minimax-h3.md)
 
-Read [runtime environments](../../docs/solarwm/environments.md) for backend setup.
-Read the [data contract](../../docs/solarwm/data-contract.md) only when the request
+Read [runtime environments](../../docs/solar_wm/environments.md) for backend setup.
+Read the [data contract](../../docs/solar_wm/data-contract.md) only when the request
 involves indexes, sampling, storage transport, camera inputs, or shard access.
 
 ## What each training route learns
@@ -89,7 +89,7 @@ Loss terminology:
 Wan I2V-A14B and LTX-2.5 expose no Stage1 or Stage2 training route
 in the current release. Reject those combinations before model allocation.
 
-For H3 Stage1/2, use the [backend guide](../../docs/solarwm/backends/minimax-h3.md#stage1-and-stage2-setup).
+For H3 Stage1/2, use the [backend guide](../../docs/solar_wm/backends/minimax-h3.md#stage1-and-stage2-setup).
 Keep the automatically frozen validation plan, encoded-silence condition and tail-camera
 rules fixed. Stage2 EMA begins at student update 39 (outer step 196); validation
 at steps 20 and 100 is LIVE only, and step 200 includes LIVE and EMA.
@@ -105,10 +105,10 @@ standalone inference.
 List the routes implemented by the current checkout:
 
 ```bash
-solarwm config routes
+solar config routes
 ```
 
-Select the closest file under `configs/examples/`. Do not transfer stage,
+Select the closest file under `configs/solar_wm/`. Do not transfer stage,
 objective, latent layout, model assets, or inference settings between backends.
 If the requested combination is not listed, report it as unsupported instead
 of allocating a model.
@@ -120,14 +120,14 @@ Set the `SOLAR_*` shell variables below from the intended configuration before
 running the examples.
 
 ```bash
-solarwm environment probe
-solarwm data inspect /path/to/index.jsonl.gz
-solarwm data plan /path/to/index.jsonl.gz \
+solar environment probe
+solar data inspect /path/to/index.jsonl.gz
+solar data plan /path/to/index.jsonl.gz \
   --seed "${SOLAR_SEED}" \
   --pixel-frames "${SOLAR_PIXEL_FRAMES}" \
   --world-size "${SOLAR_RAW_WORLD_SIZE}" --rank 0
-solarwm config resolve \
-  --config configs/examples/<backend>/<config>.yaml \
+solar config resolve \
+  --config configs/solar_wm/<backend>/<config>.yaml \
   --output /path/to/resolved-preview.json
 ```
 
@@ -188,15 +188,15 @@ rank map.
 
 ```bash
 torchrun --standalone --nproc-per-node="${SOLAR_LOCAL_WORLD_SIZE}" \
-  -m solarwm train \
-  --config configs/examples/<backend>/<train-config>.yaml \
+  -m solar train \
+  --config configs/solar_wm/<backend>/<train-config>.yaml \
   --set distributed.world_size="${SOLAR_RAW_WORLD_SIZE}" \
   --set train.global_batch_size="${SOLAR_GLOBAL_BATCH_SIZE}" \
   --set runtime.output_dir=/path/to/new-output
 
 torchrun --standalone --nproc-per-node="${SOLAR_LOCAL_WORLD_SIZE}" \
-  -m solarwm infer \
-  --config configs/examples/<backend>/<infer-config>.yaml \
+  -m solar infer \
+  --config configs/solar_wm/<backend>/<infer-config>.yaml \
   --set distributed.world_size="${SOLAR_RAW_WORLD_SIZE}" \
   --set runtime.output_dir=/path/to/new-output
 ```
@@ -261,7 +261,7 @@ per node-local output tree, outside `torchrun`, using the same destination and
 node count with unique ranks `0..N-1`:
 
 ```bash
-solarwm publish-validation \
+solar publish-validation \
   --run-dir "${SOLAR_OUTPUT_ROOT}" \
   --destination "${SOLAR_GCS_OUTPUT_PREFIX}" \
   --node-rank "${SOLAR_NODE_RANK}" --num-nodes "${SOLAR_NUM_NODES}" \

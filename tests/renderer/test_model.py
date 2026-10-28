@@ -4,15 +4,15 @@ import builtins
 
 import pytest
 
-from solarwm.backends.minimax_h3.layout import H3VisualObservationSpec
-from solarwm.renderer.causal import (
+from solar.backends.minimax_h3.layout import H3VisualObservationSpec
+from solar.renderer.causal import (
     causal_rows,
     row_times,
     training_plan,
     unique_times,
     with_clean_copy,
 )
-from solarwm.renderer.core import H3Stage0p5Core
+from solar.renderer.core import H3Stage0p5Core
 
 torch = pytest.importorskip("torch")
 upstream = pytest.importorskip(
@@ -40,7 +40,7 @@ TINY_CONFIG = {
 
 
 def tiny_model():
-    from solarwm.backends.minimax_h3.model import SolarMiniMaxH3Transformer3DModel
+    from solar.backends.minimax_h3.model import SolarMiniMaxH3Transformer3DModel
 
     with torch.random.fork_rng():
         torch.manual_seed(716)
@@ -117,7 +117,7 @@ def output_and_gradients(model, arguments, **options):
 
 @pytest.mark.parametrize("explicit_control", [False, True])
 def test_tiny_adapter_preserves_native_bidirectional_forward_and_backward(explicit_control):
-    from solarwm.backends.minimax_h3.model import SolarMiniMaxH3AttnProcessor
+    from solar.backends.minimax_h3.model import SolarMiniMaxH3AttnProcessor
 
     model = tiny_model()
     native = upstream.MiniMaxH3Transformer3DModel.from_config(TINY_CONFIG)
@@ -161,7 +161,7 @@ def test_tiny_model_segment_plan_matches_dense_attention_and_excludes_future(
     original_import = builtins.__import__
 
     def without_renderer(name, *args, **kwargs):
-        if name == "solarwm.renderer" or name.startswith("solarwm.renderer."):
+        if name == "solar.renderer" or name.startswith("solar.renderer."):
             raise AssertionError("H3 attention must not import the renderer extension")
         return original_import(name, *args, **kwargs)
 

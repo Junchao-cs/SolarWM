@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.wan22.codec import PREENCODED_PROFILES, profile_for
-from solarwm.backends.wan22.generation import resolve_generation_plan
-from solarwm.config import load_config
-from solarwm.errors import BackendContractError
+from solar.backends.wan22.codec import PREENCODED_PROFILES, profile_for
+from solar.backends.wan22.generation import resolve_generation_plan
+from solar.config import load_config
+from solar.errors import BackendContractError
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -33,7 +33,7 @@ def test_schema_cannot_cross_families() -> None:
 
 
 def test_inference_resolves_recipe_test_selection_directly() -> None:
-    path = ROOT / "configs/examples/wan22_ti2v_5b/infer_stage1_tf_anyflow_v1_5_81f.yaml"
+    path = ROOT / "configs/solar_wm/wan22_ti2v_5b/infer_stage1_tf_anyflow_v1_5_81f.yaml"
     config = load_config(path).values
     plan = resolve_generation_plan(config)
     assert plan.index == "recipes/clean-81f/raw-wds/test-index.jsonl.gz"
@@ -44,7 +44,7 @@ def test_inference_resolves_recipe_test_selection_directly() -> None:
 
 
 def test_validation_sample_count_is_required_and_positive() -> None:
-    path = ROOT / "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
+    path = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
     config = load_config(path).mutable_copy()
     del config["validation"]["sample_count"]
     with pytest.raises(BackendContractError, match="sample_count"):
@@ -56,7 +56,7 @@ def test_validation_sample_count_is_required_and_positive() -> None:
     (("selection_seed", -1), ("selection_seed", True), ("noise_seed", "42")),
 )
 def test_validation_seeds_are_explicit_nonnegative_integers(field: str, value: object) -> None:
-    path = ROOT / "configs/examples/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
+    path = ROOT / "configs/solar_wm/wan22_ti2v_5b/train_stage0p5_fm_81f.yaml"
     config = load_config(path).mutable_copy()
     config["validation"][field] = value
     with pytest.raises(BackendContractError, match=field):
@@ -64,7 +64,7 @@ def test_validation_seeds_are_explicit_nonnegative_integers(field: str, value: o
 
 
 def test_inference_only_sampler_drift_is_rejected() -> None:
-    path = ROOT / "configs/examples/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml"
+    path = ROOT / "configs/solar_wm/wan22_i2v_a14b/infer_stage0p5_fm_81f.yaml"
     config = load_config(path).mutable_copy()
     config["inference"]["source"] = "custom"
     with pytest.raises(BackendContractError, match="source must be validation"):

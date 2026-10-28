@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-import solarwm.inference.engine as inference_engine
-from solarwm.errors import BackendContractError
-from solarwm.inference import (
+import solar.inference.engine as inference_engine
+from solar.errors import BackendContractError
+from solar.inference import (
     GeneratedFile,
     GeneratedSample,
     InferenceCase,

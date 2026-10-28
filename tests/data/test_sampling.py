@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import random
 
-from solarwm.data.index import IndexRow
-from solarwm.data.sampling import (
+from solar.data.index import IndexRow
+from solar.data.sampling import (
     CanonicalSampler,
     ReaderIdentity,
     SamplingConfig,
     plan_fingerprint,
 )
-from solarwm.runtime.topology import Topology
+from solar.runtime.topology import Topology
 
 
 def _rows() -> tuple[IndexRow, ...]:

@@ -7,8 +7,8 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from solarwm.backends.ltx25.adapter import lora_target_modules
-from solarwm.backends.ltx25.checkpoint import (
+from solar.backends.ltx25.adapter import lora_target_modules
+from solar.backends.ltx25.checkpoint import (
     BASE_CHECKPOINT_CONTRACT,
     EMA_CONTRACT,
     LORA_CHECKPOINT_CONTRACT,
@@ -19,7 +19,7 @@ from solarwm.backends.ltx25.checkpoint import (
     runtime_fingerprint,
     validate_full_resume,
 )
-from solarwm.backends.ltx25.inference import (
+from solar.backends.ltx25.inference import (
     GuidanceSpec,
     ValidationInferenceAdapter,
     build_inference_plan,
@@ -27,12 +27,12 @@ from solarwm.backends.ltx25.inference import (
     guided_clean_prediction,
     native_sigma_schedule,
 )
-from solarwm.backends.ltx25.official_codec import codec_receipt
-from solarwm.backends.ltx25.runtime import (
+from solar.backends.ltx25.official_codec import codec_receipt
+from solar.backends.ltx25.runtime import (
     checkpoint_contract,
     inference_checkpoint_contract,
 )
-from solarwm.errors import BackendContractError
+from solar.errors import BackendContractError
 
 
 def test_native_inference_schedule_and_defaults() -> None:

@@ -1,3 +1,10 @@
+include assets/solar-logo.svg
+include assets/solar-logo-transparent.png
+include assets/solar-logo-dark.png
+include assets/solarwm-demo-poster.png
+include assets/solarrenderer-demo.gif
+include deploy/__init__.py
+include deploy/README.md
 include CONTRIBUTING.md
 include NOTICE
 include SECURITY.md
@@ -5,17 +12,17 @@ include data-engine/README.md
 recursive-include .github *.yml
 recursive-include configs *.yaml
 recursive-include docs *.md
-recursive-include src/solarwm/realtime_interaction *.md *.txt *.json *.sh *.png *.html *.js *.c *.pt
-include src/solarwm/realtime_interaction/.ruff.toml
-recursive-include comfyui/solar_renderer *.py *.md *.json *.html *.png
-recursive-include reactor/solar_renderer *.py *.md *.yaml *.txt *.json *.ts *.tsx *.css *.html *.png
-recursive-include reactor/solar_renderer LICENSE NOTICE .dockerignore .gitignore
-prune reactor/solar_renderer/demo/node_modules
-prune reactor/solar_renderer/demo/dist
-prune reactor/solar_renderer/.solarwm-source
+recursive-include deploy/solar_wm *.md *.txt *.json *.sh *.png *.html *.js *.c *.pt
+include deploy/solar_wm/.ruff.toml
+recursive-include deploy/solar_renderer/comfyui *.py *.md *.json *.html *.png
+recursive-include deploy/solar_renderer/reactor *.py *.md *.yaml *.txt *.json *.ts *.tsx *.css *.html *.png
+recursive-include deploy/solar_renderer/reactor LICENSE NOTICE .dockerignore .gitignore
+prune deploy/solar_renderer/reactor/demo/node_modules
+prune deploy/solar_renderer/reactor/demo/dist
+prune deploy/solar_renderer/reactor/.solarwm-source
 recursive-include eval/solar_renderer *.py *.md *.sh
 recursive-include examples/solar_renderer *.txt *.png *.mp4
-recursive-include examples/solarwm *.md *.txt *.png
+recursive-include examples/solar_wm *.md *.txt *.png
 recursive-include skills *.md *.py
 recursive-include tests *.py
 recursive-include tools *.py

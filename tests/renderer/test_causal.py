@@ -4,14 +4,14 @@ import numpy as np
 import pytest
 import torch
 
-from solarwm.backends.minimax_h3.distributed import validate_packed_attention_mask
-from solarwm.backends.minimax_h3.layout import H3VisualObservationSpec, build_stage0p5_layout
-from solarwm.backends.minimax_h3.segmented_attention import (
+from solar.backends.minimax_h3.distributed import validate_packed_attention_mask
+from solar.backends.minimax_h3.layout import H3VisualObservationSpec, build_stage0p5_layout
+from solar.backends.minimax_h3.segmented_attention import (
     H3ChunkKVCache,
     H3SegmentPlan,
     segment_attention,
 )
-from solarwm.renderer.causal import causal_rows, training_plan
+from solar.renderer.causal import causal_rows, training_plan
 
 
 @pytest.mark.parametrize("teacher", [False, True])

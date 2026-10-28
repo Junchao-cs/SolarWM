@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from solarwm.backends.wan22.runtime import data as raw_data
-from solarwm.data.archive import RawSample
-from solarwm.data.index import IndexRow
-from solarwm.data.sampling import SamplePlan, SamplingConfig
-from solarwm.errors import DataContractError
+from solar.backends.wan22.runtime import data as raw_data
+from solar.data.archive import RawSample
+from solar.data.index import IndexRow
+from solar.data.sampling import SamplePlan, SamplingConfig
+from solar.errors import DataContractError
 
 
 @pytest.mark.parametrize("count", [1, 8, 9, 81])

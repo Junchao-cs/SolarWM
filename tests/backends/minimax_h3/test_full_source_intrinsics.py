@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from solarwm.backends.minimax_h3.raw_data import _normalise_K
-from solarwm.errors import DataContractError
+from solar.backends.minimax_h3.raw_data import _normalise_K
+from solar.errors import DataContractError
 
 TRANSFORM = dict(
     source_w=1280,

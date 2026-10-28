@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from solarwm.config import load_config
-from solarwm.config.loader import canonical_json
-from solarwm.errors import ConfigurationError
+from solar.config import load_config
+from solar.config.loader import canonical_json
+from solar.errors import ConfigurationError
 
 
 def _write(tmp_path: Path, values: dict) -> Path:

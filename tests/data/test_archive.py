@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.data.archive import RawSampleReader, TarShardReader
-from solarwm.data.index import IndexRow
-from solarwm.data.sampling import SamplePlan
-from solarwm.data.transport import LocalResolver
-from solarwm.errors import DataContractError
+from solar.data.archive import RawSampleReader, TarShardReader
+from solar.data.index import IndexRow
+from solar.data.sampling import SamplePlan
+from solar.data.transport import LocalResolver
+from solar.errors import DataContractError
 
 
 def test_raw_sample_preserves_authoritative_index_values(tmp_path: Path) -> None:

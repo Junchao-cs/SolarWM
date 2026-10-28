@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.runtime.create_only import link_file_create_only, write_file_create_only
+from solar.errors import BackendContractError
+from solar.runtime.create_only import link_file_create_only, write_file_create_only
 
 
 def test_create_only_file_never_overwrites(tmp_path: Path) -> None:

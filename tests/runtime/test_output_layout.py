@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.runtime.output_layout import (
+from solar.errors import BackendContractError
+from solar.runtime.output_layout import (
     CAMERA_DATASET_TRIPLET_LAYOUT,
     camera_inference_output_layout,
     checkpoint_model_dir,

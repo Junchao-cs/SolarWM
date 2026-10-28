@@ -5,11 +5,11 @@ from threading import Event
 
 import pytest
 
-from solarwm.data.index import IndexRow
-from solarwm.data.prefetch import ShardPrefetcher, build_shard_prefetcher, warm_shard_cache
-from solarwm.data.sampling import CanonicalSampler, ReaderIdentity, SamplePlan, SamplingConfig
-from solarwm.data.transport import GCSDownloadTimeout
-from solarwm.errors import DataContractError
+from solar.data.index import IndexRow
+from solar.data.prefetch import ShardPrefetcher, build_shard_prefetcher, warm_shard_cache
+from solar.data.sampling import CanonicalSampler, ReaderIdentity, SamplePlan, SamplingConfig
+from solar.data.transport import GCSDownloadTimeout
+from solar.errors import DataContractError
 
 
 def _rows(count: int = 12) -> tuple[IndexRow, ...]:

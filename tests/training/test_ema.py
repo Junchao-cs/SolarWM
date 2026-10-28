@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.training.ema import ema_decay_for_step
+from solar.errors import BackendContractError
+from solar.training.ema import ema_decay_for_step
 
 
 def test_ema_warmup_is_copy_then_target_decay() -> None:

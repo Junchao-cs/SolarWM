@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from solarwm.runtime.gcs_upload import GCSStore, ObjectInfo, PublicationError
+from solar.runtime.gcs_upload import GCSStore, ObjectInfo, PublicationError
 
 DESTINATION = "gs://example-bucket/example-run"
 SESSION = "https://storage.googleapis.com/upload/storage/v1/b/example-bucket/o?upload_id=private"
@@ -55,8 +55,8 @@ class Wire:
             def close(self):
                 pass
 
-        monkeypatch.setattr("solarwm.runtime.gcs_upload.http.client.HTTPSConnection", Connection)
-        monkeypatch.setattr("solarwm.runtime.gcs_upload.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("solar.runtime.gcs_upload.http.client.HTTPSConnection", Connection)
+        monkeypatch.setattr("solar.runtime.gcs_upload.time.sleep", lambda _seconds: None)
 
 
 def store(**kwargs):
@@ -103,7 +103,7 @@ def test_idempotency_checks_contents_not_only_size(monkeypatch):
 
 def test_lost_chunk_response_queries_acknowledged_offset(monkeypatch):
     data = b"abcdef"
-    monkeypatch.setattr("solarwm.runtime.gcs_upload._CHUNK", 4)
+    monkeypatch.setattr("solar.runtime.gcs_upload._CHUNK", 4)
     wire = Wire(
         monkeypatch,
         [
@@ -125,7 +125,7 @@ def test_lost_chunk_response_queries_acknowledged_offset(monkeypatch):
 
 def test_multi_chunk_upload_obeys_acknowledged_range(monkeypatch):
     data = b"abcdef"
-    monkeypatch.setattr("solarwm.runtime.gcs_upload._CHUNK", 4)
+    monkeypatch.setattr("solar.runtime.gcs_upload._CHUNK", 4)
     wire = Wire(
         monkeypatch,
         [

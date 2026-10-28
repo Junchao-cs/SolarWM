@@ -14,7 +14,7 @@ Ref2VA and the bidirectional adapter pair. Those steps define `H3_ROOT`,
 
 Inference requires one CUDA GPU, FlashAttention, and `ffmpeg` / `ffprobe` on
 the path. The text encoder is released before loading the video transformer.
-Use `python -m solarwm.renderer --help` to inspect the integrated CLI.
+Use `python -m solar.renderer --help` to inspect the integrated CLI.
 
 ## Prepare inputs
 
@@ -36,7 +36,7 @@ omitting `--first`, use a prompt describing structure-and-text conditioning.
 ## Render a clip
 
 ```bash
-python -m solarwm.renderer \
+python -m solar.renderer \
   --h3 "$H3_ROOT" \
   --control "$RENDERER_WEIGHTS/solarrenderer_control_lora.safetensors" \
   --fewstep "$RENDERER_WEIGHTS/solarrenderer_4step_lora.safetensors" \
@@ -68,7 +68,7 @@ hf download Enderfga/SolarRenderer \
   solarrenderer_causal_4step_lora.safetensors \
   --local-dir "$RENDERER_WEIGHTS"
 
-python -m solarwm.renderer --causal \
+python -m solar.renderer --causal \
   --h3 "$H3_ROOT" \
   --control "$RENDERER_WEIGHTS/solarrenderer_causal_control_lora.safetensors" \
   --fewstep "$RENDERER_WEIGHTS/solarrenderer_causal_4step_lora.safetensors" \
@@ -84,7 +84,7 @@ future generated video.
 
 The integrated command writes the completed MP4 after sampling and decoding;
 its default duration is 158 frames. It does not expose a live frame stream.
-The [Reactor integration](../../reactor/solar_renderer/README.md)
+The [Reactor integration](../../deploy/solar_renderer/reactor/README.md)
 documents its own interactive interface.
 
 ## Render a longer clip
@@ -93,7 +93,7 @@ Use `--seconds` with either adapter pair to request a longer output. For
 example, with a structure video covering at least a minute:
 
 ```bash
-python -m solarwm.renderer --causal \
+python -m solar.renderer --causal \
   --h3 "$H3_ROOT" \
   --control "$RENDERER_WEIGHTS/solarrenderer_causal_control_lora.safetensors" \
   --fewstep "$RENDERER_WEIGHTS/solarrenderer_causal_4step_lora.safetensors" \
@@ -126,7 +126,7 @@ do not provide live playback from this command.
 ## Related workflows
 
 - [Benchmark and evaluation](../../eval/solar_renderer/README.md): render and evaluate benchmark cases.
-- [ComfyUI integration](../../comfyui/solar_renderer/README.md): use the renderer through nodes.
+- [ComfyUI integration](../../deploy/solar_renderer/comfyui/README.md): use the renderer through nodes.
 - [Training](training.md): create and export your own adapter pair.
 - [Prompts and first frames](prompts.md): caption and first-frame preparation.
 

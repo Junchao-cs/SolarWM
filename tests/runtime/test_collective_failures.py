@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from solarwm.errors import BackendContractError
-from solarwm.runtime.distributed import (
+from solar.errors import BackendContractError
+from solar.runtime.distributed import (
     collective_call,
     collective_rank_zero_call,
     propagate_collective_error,

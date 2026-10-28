@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.errors import ConfigurationError
-from solarwm.runtime.provenance import build_launch_manifest, reject_inline_secrets
+from solar.errors import ConfigurationError
+from solar.runtime.provenance import build_launch_manifest, reject_inline_secrets
 
 
 def _config() -> dict:

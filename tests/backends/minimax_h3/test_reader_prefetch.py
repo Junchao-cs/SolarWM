@@ -7,14 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.backends.minimax_h3.artifacts import (
+from solar.backends.minimax_h3.artifacts import (
     H3CameraFilterError,
     H3PlanMultiplexer,
     H3PreencodedStream,
     h3_encoder_contract,
 )
-from solarwm.data import CanonicalSampler, IndexRow, ReaderIdentity, SamplingConfig, ShardPrefetcher
-from solarwm.runtime import Topology
+from solar.data import CanonicalSampler, IndexRow, ReaderIdentity, SamplingConfig, ShardPrefetcher
+from solar.runtime import Topology
 
 
 def rows():

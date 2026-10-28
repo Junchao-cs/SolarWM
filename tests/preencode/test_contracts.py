@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from solarwm.errors import DataContractError
-from solarwm.preencode import (
+from solar.errors import DataContractError
+from solar.preencode import (
     EncodedPayload,
     EncoderContract,
     TensorSpec,

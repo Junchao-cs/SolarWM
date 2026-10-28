@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-import solarwm.backends.ltx25.torch_validation as validation_module
-from solarwm.backends.ltx25.torch_validation import (
+import solar.backends.ltx25.torch_validation as validation_module
+from solar.backends.ltx25.torch_validation import (
     TrainingValidation,
     _partition_validation_cases,
     _validation_passes,
 )
-from solarwm.errors import BackendContractError
-from solarwm.inference import InferenceCase
+from solar.errors import BackendContractError
+from solar.inference import InferenceCase
 
 
 def test_validation_passes_accept_named_weight_roles() -> None:

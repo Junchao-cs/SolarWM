@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from solarwm.backends.ltx25 import torch_raw as ltx_raw
-from solarwm.backends.ltx25.inference import build_inference_plan
-from solarwm.backends.ltx25.torch_data import (
+from solar.backends.ltx25 import torch_raw as ltx_raw
+from solar.backends.ltx25.inference import build_inference_plan
+from solar.backends.ltx25.torch_data import (
     IndexedPreencodedSource,
     VerifiedShardResolver,
     verified_resolver_from_config,
 )
-from solarwm.backends.ltx25.torch_raw import RawIndexedStream, RawInferenceSource
-from solarwm.data.index import IndexRow
-from solarwm.data.transport import GCSResolver, LocalResolver
-from solarwm.errors import BackendContractError
-from solarwm.runtime import Topology
+from solar.backends.ltx25.torch_raw import RawIndexedStream, RawInferenceSource
+from solar.data.index import IndexRow
+from solar.data.transport import GCSResolver, LocalResolver
+from solar.errors import BackendContractError
+from solar.runtime import Topology
 
 
 def _raw_row() -> dict[str, object]:

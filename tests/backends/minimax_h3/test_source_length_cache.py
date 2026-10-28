@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.backends.minimax_h3 import source_length_cache as cache
+from solar.backends.minimax_h3 import source_length_cache as cache
 
 
 def _source(root: Path, payload: bytes):

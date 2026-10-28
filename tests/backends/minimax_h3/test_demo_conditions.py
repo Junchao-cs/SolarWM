@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from solarwm.backends.minimax_h3.demo_conditions import source_digest, stage_source
-from solarwm.backends.minimax_h3.source_length_cache import (
+from solar.backends.minimax_h3.demo_conditions import source_digest, stage_source
+from solar.backends.minimax_h3.source_length_cache import (
     preparation_identity,
     prepared_case_receipt,
 )

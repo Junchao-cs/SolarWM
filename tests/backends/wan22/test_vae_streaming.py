@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from solarwm.backends.wan22.runtime.components import Wan5BVAE
+from solar.backends.wan22.runtime.components import Wan5BVAE
 
 
 def test_wan5b_streaming_decode_keeps_one_cache_across_temporal_tiles() -> None:

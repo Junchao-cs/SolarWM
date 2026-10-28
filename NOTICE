@@ -10,19 +10,19 @@ Third-party source included in this repository
   SolarRenderer (https://github.com/Enderfga/SolarRenderer), Apache-2.0
     Copyright 2026 SolarRenderer authors.
     Adapted from revision 5a5da36c2cc0b91c00bac85b906cbf7cad469e84 under
-    src/solarwm/renderer/, with shared observation-packing, attention, LoRA,
+    solar/renderer/, with shared observation-packing, attention, LoRA,
     and selective-checkpointing support in the MiniMax-H3 backend.
     The renderer examples, training configurations, and solarrenderer-caption
     skill and helper scripts come from the same release.
     ComfyUI, Reactor, evaluation tools, and expanded documentation are adapted
     from revision e018b0f673de865711fe99844d3976865722b8d0 under
-    comfyui/solar_renderer/, reactor/solar_renderer/, eval/solar_renderer/,
+    deploy/solar_renderer/comfyui/, deploy/solar_renderer/reactor/, eval/solar_renderer/,
     and docs/solar_renderer/. Runtime imports, asset paths, deployment inputs,
     and documentation commands are modified for the integrated SolarWM layout.
     Long-video rendering, combined LoRA merging, causal condition positioning,
     long-input encoding, and encoded-silence extension are updated through
     revision 41e136e64b30d4aa0095070ce055ff00ae90fe3b (main, 2026-10-23).
-    These updates are adapted under src/solarwm/renderer/ in render.py,
+    These updates are adapted under solar/renderer/ in render.py,
     causal.py, preencode.py, and silence.py, with docs/solar_renderer/ updates.
     Renderer-specific causal and silence changes are isolated from the shared
     MiniMax-H3 backend. See docs/solar_renderer/README.md for the sync record.
@@ -33,7 +33,7 @@ Third-party source included in this repository
 
   Wan 2.2 (Alibaba Wan Team), Apache-2.0
     Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
-    Vendored under src/solarwm/backends/wan22/runtime/modeling/:
+    Vendored under solar/backends/wan22/runtime/modeling/:
       model.py, vae.py, t5.py, attention.py, tokenizers.py
     causal_model.py is a MODIFIED derivative of the above, extending the Wan
     architecture with causal attention and camera conditioning.
@@ -41,7 +41,7 @@ Third-party source included in this repository
 
   PRoPE: Projective Positional Encoding for Multiview Transformers, MIT
     Copyright (c) the PRoPE authors.
-    Vendored as src/solarwm/backends/wan22/runtime/modeling/camera_prope.py
+    Vendored as solar/backends/wan22/runtime/modeling/camera_prope.py
     (dual-licensed Apache-2.0 AND MIT) and adapted in the LTX and H3 backends
     as torch_prope.py.
 

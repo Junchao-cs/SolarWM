@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-H3 = ROOT / "src/solarwm/backends/minimax_h3"
-WEB = ROOT / "src/solarwm/realtime_interaction/solarwm_web"
+H3 = ROOT / "solar/backends/minimax_h3"
+WEB = ROOT / "deploy/solar_wm/solarwm_web"
 
 
 @pytest.mark.parametrize(
