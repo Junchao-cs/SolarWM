@@ -115,7 +115,7 @@ and training recipes. Prepared raw video data can be requested through the
 preencoded latents are distributed in separate releases.
 
 - **Download:** [Hugging Face](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data) · [ModelScope](https://modelscope.cn/datasets/junchao2003/SolarWM-Data) · [Download & access](docs/solar_wm/data-access.md)
-- **Data preparation:** [Dataset details](docs/solar_wm/datasets.md) · [Data pipeline](data-engine/solarwm-data)
+- **Data preparation:** [Dataset details](docs/solar_wm/datasets.md) · [Data pipeline](https://github.com/Enderfga/solarwm-data/tree/e7decd39cdbc0473a38e3d24716d3888569ccb62)
 - **Training & evaluation:** [Preencoded latents](docs/solar_wm/latent-wds.md) · [Test set](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data_test-set-v1)
 
 ### SolarRenderer-Data
@@ -126,7 +126,7 @@ first frames, and prompts, plus a **208-case generalization benchmark** and
 **53 held-out clips** with ground truth.
 
 - **Download:** [Hugging Face](https://huggingface.co/datasets/Enderfga/SolarRenderer-Data)
-- **Data preparation:** [Training data preparation](docs/solar_renderer/training.md#prepare-training-data) · [Data pipeline](data-engine/solar_renderer-data)
+- **Data preparation:** [Training data preparation](docs/solar_renderer/training.md#prepare-training-data) · [Data pipeline](https://github.com/Enderfga/SolarRenderer/tree/68b6c3cf7e85e322311d2eafc79b7901b3f30693)
 - **Evaluation:** [Benchmark evaluation](eval/solar_renderer/README.md)
 
 <a id="documentation"></a>

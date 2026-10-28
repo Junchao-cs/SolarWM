@@ -28,7 +28,7 @@ stages, model weights, and inference workflows.
 
 - [Training and inference configurations](../../configs/solar_wm/) · [Image and prompt examples](../../examples/solar_wm/).
 - [H3 offline inference](backends/minimax-h3.md#full-length-stage2-inference) · [Realtime deployment](../../deploy/solar_wm/README.md).
-- [Data pipeline](../../data-engine/solarwm-data) · [Pipeline setup](../../data-engine/README.md).
+- [Data pipeline](https://github.com/Enderfga/solarwm-data/tree/e7decd39cdbc0473a38e3d24716d3888569ccb62) · [Pipeline setup](../../data-engine/README.md).
 
 For structure-conditioned rendering, use the separate
 [SolarRenderer guide](../solar_renderer/README.md). Return to the
