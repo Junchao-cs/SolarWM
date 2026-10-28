@@ -32,10 +32,11 @@ validation also reads raw test cameras for the full trajectory; see the
    downloads and generations that are still being uploaded.
 2. **Rebuild raw-WDS from annotations.**
    [`SolarWM-Data-Annotation/`](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data/tree/main/SolarWM-Data-Annotation)
-   is an annotation-only release with no videos. It contains the released camera
-   trajectories, captions, metadata, source identities, and reconstruction tools.
-   Follow its README to download the original videos from their source publishers
-   and process them into the expected `raw-wds/` layout.
+   contains camera trajectories, captions, metadata, source identities, and
+   reconstruction tools. It also includes the processed videos for the three
+   clean sources: `miradata-clean`, `sekai_walking-clean`, and `spatialvid-clean`.
+   The other 11 sources require original videos from their publishers. Follow
+   the package README to restore the sources and build the `raw-wds/` layout.
 3. **Request prepared raw-WDS.** Submit the
    [Dataset Access Form](https://docs.google.com/forms/d/e/1FAIpQLSfS-SLOiSRVDWwZ2kPl9ywN27aB6QplN0jpdKaBu-gG8aNsvQ/viewform).
    Approved applicants receive download instructions by email.
@@ -79,9 +80,10 @@ MiraData, Sekai Walking, and SpatialVid each include an additional clean variant
 Every row in this table is part of the frozen annotated corpus. The rejected
 tier is published because selection is metadata over an already-annotated
 corpus, so a different threshold, metric or source weighting is an index pass
-rather than another GPU run. The public annotation package contains no videos;
-it provides the released annotations and tools needed to reconstruct raw-WDS
-from source media acquired by the user under the applicable upstream terms.
+rather than another GPU run. The public reconstruction package includes the
+processed videos for the three clean sources. For the other sources, it provides
+annotations and tools to rebuild raw-WDS from media acquired by the user under
+the applicable upstream terms.
 
 Each source directory contains tiered WebDataset shards and a full
 `meta.jsonl`; portable recipe indexes select the training and test rows.

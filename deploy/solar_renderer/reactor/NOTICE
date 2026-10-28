@@ -24,7 +24,7 @@ Third-party source included in this repository
 Each adapted file keeps its upstream copyright header and states that it was modified.
 
 --------------------------------------------------------------------------------
-Evaluation dependencies (not included; fetched by eval/setup.sh)
+Evaluation dependencies (not included; fetched by eval/solar_renderer/setup.sh)
 --------------------------------------------------------------------------------
 
   DOVER (github.com/VQAssessment/DOVER), CoTracker3 (github.com/facebookresearch/co-tracker), the LAION aesthetic

@@ -111,7 +111,7 @@ validation:
   camera_frames: 158
   balance_by_dataset: true
 checkpoint:
-  resume_from: /path/to/SolarWM-models/SolarWM-h3-33B-sgf-stage2-158f
+  resume_from: /path/to/SolarWM-models/SolarWM-h3-33B-sgf-stage2-158f-fix
   weight_source: ema
 runtime:
   output_dir: outputs/minimax-h3-infer-stage2-source-length-sp8
@@ -121,5 +121,5 @@ inference:
   plan: /path/to/test-plan.json
   dataset_root: /path/to/test-set-v1
   work_dir: /path/to/source-length-cache
-  expected_step: 1200
+  expected_step: 3900
   phase: all

@@ -43,7 +43,7 @@ class NativeSceneMath:
         from solar.backends.minimax_h3.sgf_rollout import H3SGFInputs
         from solar.backends.minimax_h3.torch_flow import sample_shifted_timestep, scale_noise
         from solar.backends.minimax_h3.distributed import broadcast_sp_tensor
-        from solarwm_web.runtime.camera import KeyboardCameraConfig, KeyboardCameraState
+        from .camera import KeyboardCameraConfig, KeyboardCameraState
         if self.scopes is not None or self.inputs is not None:
             raise RuntimeError('prior session is still active')
         if sha(self.condition['path']) != self.condition['sha256']:

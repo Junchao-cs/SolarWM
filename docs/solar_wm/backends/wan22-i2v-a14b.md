@@ -29,10 +29,13 @@ export SOLAR_OUTPUT_ROOT=/path/to/outputs
 cd "$SOLAR_REPO"
 ```
 
-Download the A14B base model and released checkpoint:
+To download the A14B base model and released checkpoint, first accept
+the [model repository's access terms](https://huggingface.co/junchaoh-cs/SolarWM)
+on Hugging Face and authenticate with the same account:
 
 ```bash
 python -m pip install --upgrade huggingface_hub
+hf auth login
 hf download junchaoh-cs/SolarWM \
   --include "SolarWM-14B-*/**" \
   --local-dir "$SOLAR_MODEL_ROOT"

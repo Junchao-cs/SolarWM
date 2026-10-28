@@ -27,8 +27,13 @@ the small self-contained `releases-v1/example/` catalog, and the optional
 `SolarWM-Data-Annotation/` reconstruction package. It does **not** contain the
 full `releases-v1/raw-wds/` or `releases-v1/latent-wds/` payloads.
 
+For Hugging Face downloads, first open the dataset page and accept its access
+conditions, then authenticate with the same account. Without dataset access,
+file downloads return HTTP 401 even though the repository page is public.
+
 ```bash
 python -m pip install --upgrade huggingface_hub
+hf auth login
 export SOLAR_DATA_HOME=/path/to/SolarWM-Data
 
 hf download junchaoh-cs/SolarWM-Data \
@@ -81,11 +86,12 @@ hf download junchaoh-cs/SolarWM-Data \
 export ANNOTATION_REPO="$SOLAR_DATA_HOME/SolarWM-Data-Annotation"
 ```
 
-This is an annotation-only release and contains no videos. It provides the
-released camera trajectories, captions, metadata, public source identities,
-and reconstruction tools for the complete corpus. Follow
-`$ANNOTATION_REPO/README.md` to obtain the original videos from their source
-publishers under the applicable terms and process them into the `raw-wds/`
+The package provides camera trajectories, captions, metadata, source identities,
+and reconstruction tools. It also includes processed videos for `miradata-clean`,
+`sekai_walking-clean`, and `spatialvid-clean`; those three sources can be restored
+without rerunning their processing models. For the other 11 sources, obtain the
+original videos from their publishers under the applicable terms. Follow
+`$ANNOTATION_REPO/README.md` to restore each source and build the `raw-wds/`
 layout expected by SolarWM-Data.
 
 Use the recipe indexes emitted by the reconstruction tools. Do not pair a

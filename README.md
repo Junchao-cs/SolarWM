@@ -71,7 +71,7 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 
 - **September 13, 2026:** We release **SolarWM-H3** ([Guide](docs/solar_wm/backends/minimax-h3.md)), the first MiniMax-H3-based world model for **streaming, few-step interaction**. Training and inference code, [model weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B), and [pre-encoded training data](docs/solar_wm/latent-wds.md) are available for all three stages.
 
-- **September 3, 2026:** We open-source **SolarWM** ([Project](https://junchao-cs.github.io/SolarWM-Web/) · [Paper](https://arxiv.org/abs/2609.02886)), releasing **[1.43M video clips](docs/solar_wm/data-access.md)**, the data-processing pipeline, and training and inference code with [model weights](https://huggingface.co/collections/junchaoh-cs/solarwm) for **four video backbones spanning 5B–33B**.
+- **September 3, 2026:** We open-source **SolarWM** ([Project](https://junchao-cs.github.io/SolarWM-Web/) · [Paper](https://arxiv.org/abs/2609.02886)), releasing **[1.43M video clips](docs/solar_wm/data-access.md)**, the data pipeline, and training and inference code with [model weights](https://huggingface.co/collections/junchaoh-cs/solarwm) for **four video backbones spanning 5B–33B**.
 
 <a id="introduction"></a>
 

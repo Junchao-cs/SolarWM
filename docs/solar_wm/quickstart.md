@@ -29,16 +29,18 @@ export SOLAR_OUTPUT_ROOT=/path/to/outputs
 mkdir -p "$SOLAR_MODEL_ROOT" "$SOLAR_DATA_HOME" "$SOLAR_OUTPUT_ROOT"
 ```
 
-Accept the [H3 model repository's](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B)
-access terms, then download the base model, the Stage2 EMA checkpoint, and the
-data indexes. The Stage2 checkpoint is only needed for inference.
+Accept the access terms for both the
+[H3 model repository](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B) and the
+[SolarWM-Data repository](https://huggingface.co/datasets/junchaoh-cs/SolarWM-Data),
+then download the base model, the Stage2 EMA checkpoint, and the data indexes.
+The Stage2 checkpoint is only needed for inference.
 
 ```bash
 python -m pip install --upgrade huggingface_hub
 hf auth login
 
 hf download junchaoh-cs/SolarWM-H3-33B \
-  --include "SolarWM-h3-33B-base/**" "SolarWM-h3-33B-sgf-stage2-158f/**" \
+  --include "SolarWM-h3-33B-base/**" "SolarWM-h3-33B-sgf-stage2-158f-fix/**" \
   --local-dir "$SOLAR_MODEL_ROOT"
 
 hf download junchaoh-cs/SolarWM-Data \
@@ -61,7 +63,7 @@ generation's `support/` directory alongside its shards, then set:
 
 ```bash
 export H3_BASE="$SOLAR_MODEL_ROOT/SolarWM-h3-33B-base"
-export H3_STAGE2_CHECKPOINT="$SOLAR_MODEL_ROOT/SolarWM-h3-33B-sgf-stage2-158f"
+export H3_STAGE2_CHECKPOINT="$SOLAR_MODEL_ROOT/SolarWM-h3-33B-sgf-stage2-158f-fix"
 export H3_SUPPORT="$SOLAR_DATA_ROOT/latent-wds/minimax-h3-158f-768p-nomind-v1/support"
 ```
 

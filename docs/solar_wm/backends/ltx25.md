@@ -30,10 +30,13 @@ export SOLAR_OUTPUT_ROOT=/path/to/outputs
 cd "$SOLAR_REPO"
 ```
 
-Download the LTX base model and released adapter:
+To download the LTX base model and released adapter, first accept
+the [model repository's access terms](https://huggingface.co/junchaoh-cs/SolarWM)
+on Hugging Face and authenticate with the same account:
 
 ```bash
 python -m pip install --upgrade huggingface_hub
+hf auth login
 hf download junchaoh-cs/SolarWM \
   --include "SolarWM-ltx-22B-*/**" \
   --local-dir "$SOLAR_MODEL_ROOT"
