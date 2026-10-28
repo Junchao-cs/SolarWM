@@ -2,6 +2,7 @@ include assets/solar-logo.svg
 include assets/solar-logo-transparent.png
 include assets/solar-logo-dark.png
 include assets/solarwm-demo-poster.png
+include assets/solarwm-demo.gif
 include assets/solarrenderer-demo.gif
 include deploy/__init__.py
 include deploy/README.md

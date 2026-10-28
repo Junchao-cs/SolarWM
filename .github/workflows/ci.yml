@@ -107,6 +107,7 @@ jobs:
               "assets/solar-logo-transparent.png",
               "assets/solar-logo-dark.png",
               "assets/solarwm-demo-poster.png",
+              "assets/solarwm-demo.gif",
               "assets/solarrenderer-demo.gif",
               "skills/solarrenderer-caption/SKILL.md",
               "skills/solarrenderer-caption/scripts/conditions.py",

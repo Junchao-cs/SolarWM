@@ -39,7 +39,7 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 <tr>
 <td width="50%" align="center" valign="top">
   <a href="https://www.youtube.com/watch?v=dLwQ9LHMw-g">
-    <img src="assets/solarwm-demo-poster.png" width="360" alt="Watch the SolarWM demo: camera-controlled exploration across diverse generated worlds">
+    <img src="assets/solarwm-demo.gif" width="360" alt="Watch the SolarWM demo: camera-controlled exploration across diverse generated worlds">
   </a>
   <br>
   <strong>SolarWM</strong> · Real-time interaction, continuous exploration, and diverse generated worlds.
