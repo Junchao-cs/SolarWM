@@ -39,7 +39,7 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 <tr>
 <td width="50%" align="center" valign="top">
   <a href="https://www.youtube.com/watch?v=dLwQ9LHMw-g">
-    <img src="assets/solarwm-demo-poster.png" width="480" alt="Watch the SolarWM demo: camera-controlled exploration across diverse generated worlds">
+    <img src="assets/solarwm-demo-poster.png" width="360" alt="Watch the SolarWM demo: camera-controlled exploration across diverse generated worlds">
   </a>
   <br>
   <strong>SolarWM</strong> · Real-time interaction, continuous exploration, and diverse generated worlds.
@@ -49,7 +49,7 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 
 <td width="50%" align="center" valign="top">
   <a href="https://enderfga.cn/SolarRenderer">
-    <img src="assets/solarrenderer-demo.gif" width="480" alt="SolarRenderer demo: structure-conditioned video rendering">
+    <img src="assets/solarrenderer-demo.gif" width="360" alt="SolarRenderer demo: structure-conditioned video rendering">
   </a>
   <br>
   <strong>SolarRenderer</strong> · Four-step, structure-conditioned video rendering.
