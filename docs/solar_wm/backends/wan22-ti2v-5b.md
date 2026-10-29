@@ -206,6 +206,6 @@ rejected. Set `inference.output_layout=transaction_v1` only when the original
 Override `data.test_index` to select a different raw-WDS test index.
 
 The other released checkpoints use the same command with the config, GPU
-count, checkpoint directory, and output directory shown above. The fixed
-237-frame Stage2 validation-parity route remains available as
-`infer_stage2_sgf_81f.yaml`.
+count, checkpoint directory, and output directory shown above. For fixed
+237-frame Stage2 inference using the same settings as training validation,
+use `infer_stage2_sgf_81f.yaml`.

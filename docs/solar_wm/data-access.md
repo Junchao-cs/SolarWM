@@ -44,9 +44,9 @@ hf download junchaoh-cs/SolarWM-Data \
 export SOLAR_DATA_ROOT="$SOLAR_DATA_HOME/releases-v1"
 ```
 
-The example archives are enough for schema inspection and reader/preencoding
-smokes. They deliberately contain only one record per format and are not a
-training corpus.
+Use the example archives to inspect each format and check that reading and
+preencoding work. They contain one record per format and are not a training
+corpus.
 
 ## Getting preencoded latents
 
