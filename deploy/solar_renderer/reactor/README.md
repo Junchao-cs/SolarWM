@@ -7,17 +7,14 @@ and receive the rendered video in a small browser demo.
 
 ![SolarRenderer rendering the official synthwave example through Reactor](assets/demo.png)
 
-**Validation status:** the upstream four-B200 integration is a development preview.
-This repository adapts it to the integrated `solar.renderer` package; local CPU
-and frontend checks do not establish GPU or Docker runtime parity.
-Upstream reports that its browser completed ten generation blocks (158 frames) with and without
-an appearance reference, including a forced TURN/TCP media path.
-Upstream observed steady blocks taking about 1.8–2.1 seconds for 17 frames; preparing a new
-video can take over a minute. This is below the native 24 FPS timeline.
-Upstream Docker image execution and this adapted Docker image remain unvalidated. FA4 and static-prefix caching change
-floating-point results; the accelerated version is not bitwise identical to native inference.
+**Status:** experimental; this package's GPU inference and Docker image have
+not been validated. The upstream four-B200 browser demo reports 1.8–2.1 seconds
+per 17-frame block, with more than a minute possible for initial preparation.
+These upstream measurements are not performance guarantees for this package.
+FA4 and static-prefix caching change floating-point results and can change local
+appearance relative to native inference.
 
-## What the integration adds
+## Features
 
 - A Reactor service with explicit input selection, Start, Pause and Resume.
 - Streaming output as completed video segments become available.
@@ -90,13 +87,9 @@ the first **Start new video** performs encoding and loads the renderer. The orig
 text encoder and renderer use the GPU in sequence, so starting a new video has a
 substantial preparation phase. Do not interpret HTTP readiness as first-frame readiness.
 
-The manifest builds from YAML; no Dockerfile is needed. `stage_source.py` snapshots
-this checkout’s `solar` into the ignored `.solarwm-source/` build directory,
-including local edits and renderer assets. It records the Git revision and SHA-256
-checksums in `provenance.json`; startup verifies those checksums. No standalone
-SolarRenderer checkout is downloaded. Run the staging command again and rebuild
-after changing the adapter or integrated source. The staging directory must remain
-in the Docker build context; it is intentionally absent from `.dockerignore`. `Ctrl+C` stops the service started by this command.
+Run `stage_source.py` again and rebuild after changing the adapter or the
+shared `solar` package. Keep its generated `.solarwm-source/` directory in the
+Docker build context. `Ctrl+C` stops the service started by this command.
 
 ## 4. Open the client
 
@@ -136,8 +129,7 @@ ssh -L 8080:127.0.0.1:8080 -L 5173:127.0.0.1:5173 user@gpu-host
 HTTP forwarding alone does not carry WebRTC media. Configure a supported TURN-over-TCP
 relay and forward its TCP port as well, or use a network route that carries WebRTC.
 Docker host networking alone does not make SSH forward UDP. Keep relay credentials
-in deployment configuration; never put them in this repository. Upstream reports exercising SSH/TURN media
-connectivity in a relay-only local browser. Validate your own
+in deployment configuration; never put them in this repository. Check the
 SSH tunnel and relay configuration before sharing the service.
 
 ## Controls
@@ -156,57 +148,13 @@ Commands take effect after the current generation block. The demo allows up to
 and initial preparation can take longer. This changes the client wait limit, not
 the model's generation speed.
 
-Prompt edits apply to the **next video**. This first integration preserves the original
-fixed text conditioning throughout each render; it does not advertise live prompt changes.
+Prompt edits apply to the **next video**; text conditioning stays fixed
+throughout each render.
 There are no driving keys or game-engine controls: motion is supplied by the uploaded video.
 The decoder waits for the necessary temporal overlap before showing its first frames.
 
-## Validation and code map
-
-Use a separate Reactor environment: its Runtime/FA4 dependencies differ from SolarWM
-training dependencies, including Runtime's NumPy 2.1+ requirement. CPU application checks
-require Python 3.12+; Runtime 2.x is not API-compatible with this adapter. From this directory:
-
-```sh
-python3.12 -m venv .venv
-. .venv/bin/activate
-python -m pip install reactor-runtime==3.8.3 Pillow pytest
-PYTHONPATH=. python -m pytest tests/ -q
-```
-
-No GPU packages are needed for those application tests. From the repository root in
-the renderer test environment, `python -m pytest tests/renderer/test_reactor_integration.py -q`
-also checks the
-integrated causal sampler against the native loop (requires the renderer CPU test dependencies).
-Export the client contract with `python -m reactor_runtime.schema --path . --out schema.json`.
-`reactor validate` checks the manifest; `npm run build` in `demo/` checks the frontend.
-
-This port passed 16 application tests with the real Runtime 3.8.3 on Python 3.12,
-13 CPU integration tests, and the frontend TypeScript/production build. The CPU
-integration checks compare ten causal blocks, RNG state and KV-cache contents,
-exercise static-prefix conditioning and integrated FA4 dispatch, and verify staged
-source provenance. GPU inference and the Docker image have not been validated here.
-
-`solarrenderer.py` owns client commands and output, `solarrenderer_types.py` defines
-the public state, and `solarrenderer_model.py` owns the Runtime-independent step contract.
-The backend reuses this checkout’s integrated encoder and LoRA loader. Sampling and decoder
-helpers retain per-video state between calls. The adapter was imported from SolarRenderer revision
-`e018b0f673de865711fe99844d3976865722b8d0` and uses Reactor Runtime 3.8.3.
-The upstream integration was validated against its native revision
-`a2371eaecff9a8ab378b5ec36199c5863d138074`; the staged source records this
-repository’s actual revision separately.
-
-The upstream validation report describes a CPU comparison that exercises the original causal loop with small substitute computation:
-four seed/reference combinations each run ten consecutive blocks with identical latent
-values, random-generator state and final KV contents. Decoder-window tests cover five
-lengths. The reported upstream unaccelerated real-weight comparison uses the official example with a shared
-native-encoded input and seed 0: all ten blocks have zero latent and decoded-RGB
-difference before compression. This does not apply to the accelerated four-GPU
-configuration: FA4 and static-prefix reuse produce numerical and local appearance
-differences. Four denoising evaluations, the native history window and horizon
-remain unchanged. Upstream reports that both input modes completed 158-frame browser runs.
-The current file-based native encoder also re-reads validated uploads; moving preprocessing
-fully into the application requires its own native-input equivalence check.
+For application tests, source staging and the module map, see the
+[Reactor developer guide](../../../docs/development/reactor.md).
 
 ## Credits and licence
 

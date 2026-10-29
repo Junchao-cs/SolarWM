@@ -23,3 +23,23 @@ indexes must use relative paths or explicit `/path/to/...` placeholders.
 
 New model stages require configuration, data, objective, checkpoint, inference,
 validation, and runtime tests before they are registered as supported routes.
+
+## Source layout
+
+| Directory | Contents |
+| --- | --- |
+| `solar/` | Shared Python package and model backends. |
+| `configs/solar_wm/`, `docs/solar_wm/` | Camera-controlled world-model recipes and guides. |
+| `configs/solar_renderer/`, `docs/solar_renderer/` | Structure-conditioned rendering recipes and guides. |
+| `deploy/` | Realtime, Reactor and ComfyUI applications. |
+| `data-engine/` | Independently versioned data pipeline submodules. |
+| `examples/` | Example inputs and prompts. |
+
+See the [architecture](docs/solar_wm/architecture.md),
+[data contract](docs/solar_wm/data-contract.md), and
+[developer guides](docs/development/README.md) before changing shared behavior.
+
+Keep usage guides focused on current inputs, commands, outputs and limitations.
+Record one-time migrations and integration history in commit or release notes.
+Source attribution belongs in `NOTICE`; versioned validation reports must identify
+the measured runtime and distinguish CPU checks from GPU and quality evidence.

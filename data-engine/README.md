@@ -17,8 +17,3 @@ git submodule update --init --recursive -- data-engine/solarwm-data data-engine/
 This checks out the versions recorded by SolarWM. Follow each pipeline's own README
 for its environment, data sources, and processing commands. The SolarRenderer
 pipeline uses the upstream `data` branch.
-
-If an existing checkout has initialized the former top-level `data-engine`
-submodule, commit or stash any changes inside it, then run
-`git submodule deinit -- data-engine` **before pulling this layout change**.
-After updating SolarWM, run the initialization command above.

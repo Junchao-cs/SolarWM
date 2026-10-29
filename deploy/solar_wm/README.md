@@ -168,12 +168,8 @@ time to prepare; wait until the page finishes loading and enables **Start**.
 Disk caches are retained, but a restarted process still loads the models and
 prepares its in-memory CUDA Graphs.
 
-**Updating an existing deployment:** old built-in scene paths under
-`realtime_interaction/cases` are resolved to `examples/solar_wm` automatically.
-The gallery keeps `snow` and `fantasy_world` and omits the eight retired built-in
-scenes. Custom uploads and generated files are retained. Keep using your existing
-data directory; scene features may be prepared again on first selection after
-this update.
+The built-in gallery contains `snow` and `fantasy_world`. Reuse your data
+directory to keep custom uploads, generated files and scene caches.
 
 ## 6. Open and use
 

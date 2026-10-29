@@ -145,7 +145,7 @@ first frames, and prompts, plus a **208-case generalization benchmark** and
 - **Deployment:** [ComfyUI](deploy/solar_renderer/comfyui/README.md) · [Reactor](deploy/solar_renderer/reactor/README.md)
 - **Tools:** [Prompts and reference frames](docs/solar_renderer/prompts.md) · [Evaluation](eval/solar_renderer/README.md)
 
-[Contributing](CONTRIBUTING.md) · [Repository layout](docs/layout.md)
+[Contributing](CONTRIBUTING.md)
 
 <a id="acknowledgements"></a>
 

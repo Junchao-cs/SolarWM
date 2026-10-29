@@ -16,7 +16,7 @@ The four recipes target one eight-GPU node with FSDP and sequence parallelism.
 The upstream guide reports about 140 GB of memory per GPU, about 84 seconds
 per control step, and three to eight minutes per post-training step on its
 setup. Its full schedules therefore take weeks or days. These are upstream
-reference figures; this integration has not re-benchmarked them. The released
+reference figures, not measurements of this package. The released
 weights used the same recipe and sample counts at larger global batches.
 
 Use local paths for the prepared H3 model and run/checkpoint directories.
@@ -200,5 +200,4 @@ corresponding to your completed run.
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data).
 - [Benchmark and evaluation](../../eval/solar_renderer/README.md).
 
-For the integrated upstream commit, date, and adaptation scope, see
-[Upstream synchronization](README.md#upstream-synchronization).
+See [NOTICE](../../NOTICE) for upstream credits and source revisions.

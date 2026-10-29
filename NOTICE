@@ -25,7 +25,7 @@ Third-party source included in this repository
     These updates are adapted under solar/renderer/ in render.py,
     causal.py, preencode.py, and silence.py, with docs/solar_renderer/ updates.
     Renderer-specific causal and silence changes are isolated from the shared
-    MiniMax-H3 backend. See docs/solar_renderer/README.md for the sync record.
+    MiniMax-H3 backend.
     Reactor optimization helpers also accept the merged native model as well
     as the earlier PEFT-wrapped model in this SolarWM adaptation.
     MiniMax-H3 and SolarRenderer model weights are obtained separately and

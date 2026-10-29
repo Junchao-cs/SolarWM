@@ -55,8 +55,7 @@ to both adapter pairs and avoids rounding each adapter into the base separately.
 
 The upstream guide reports roughly four minutes for encoding and three and a
 half minutes for sampling on its single-GPU setup. These are upstream reference
-figures, not a benchmark of this integration; hardware and environment affect
-the runtime.
+figures; runtime depends on your hardware, environment and input size.
 
 ## Block-causal rendering
 
@@ -130,5 +129,4 @@ do not provide live playback from this command.
 - [Training](training.md): create and export your own adapter pair.
 - [Prompts and first frames](prompts.md): caption and first-frame preparation.
 
-For the integrated upstream commit, date, and adaptation scope, see
-[Upstream synchronization](README.md#upstream-synchronization).
+See [NOTICE](../../NOTICE) for upstream credits and source revisions.

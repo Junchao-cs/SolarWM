@@ -11,12 +11,11 @@ The [paper](https://arxiv.org/abs/2610.28630),
 [weights](https://huggingface.co/Enderfga/SolarRenderer), and
 [dataset](https://huggingface.co/datasets/Enderfga/SolarRenderer-Data) are
 maintained by the SolarRenderer authors. Please cite both projects when using
-this integration; see [Citation](../../README.md#citation).
+this package; see [Citation](../../README.md#citation).
 
-This guide is the end-to-end reference for the integrated `solar.renderer`
-entry points and the configurations in `configs/solar_renderer/`. The exact
-upstream revision and integration scope are recorded in
-[Upstream synchronization](#upstream-synchronization) at the end of this guide.
+Use the `solar-renderer` command and the examples in `configs/solar_renderer/`
+for the workflows below. Upstream credits and source revisions are listed in
+[NOTICE](../../NOTICE).
 
 ## Guide navigation
 
@@ -376,25 +375,3 @@ corresponding to your completed run.
 - [Data processing and captioning pipeline](https://github.com/Enderfga/SolarRenderer/tree/data)
 - [Benchmark and evaluation instructions](../../eval/solar_renderer/README.md)
 - [SolarWM MiniMax-H3 camera-model guide](../solar_wm/backends/minimax-h3.md)
-
-## Upstream synchronization
-
-This is the authoritative synchronization record for `docs/solar_renderer/`
-and the integrated renderer. The revision below is a pinned Git commit on
-`main`, not a release tag. Future updates should compare against this commit
-and preserve SolarWM's package layout and entry points.
-
-| Field | Synchronized version |
-|---|---|
-| Upstream repository | [Enderfga/SolarRenderer](https://github.com/Enderfga/SolarRenderer) |
-| Upstream branch | `main` |
-| Integrated commit | [`41e136e64b30d4aa0095070ce055ff00ae90fe3b`](https://github.com/Enderfga/SolarRenderer/commit/41e136e64b30d4aa0095070ce055ff00ae90fe3b) |
-| Synchronization date | 2026-10-23 |
-| Previous integration baseline | [`e018b0f673de865711fe99844d3976865722b8d0`](https://github.com/Enderfga/SolarRenderer/commit/e018b0f673de865711fe99844d3976865722b8d0) |
-| Changes integrated in this update | Explicit render duration (`--seconds`), combined float32 LoRA merge, long causal-rollout condition positions and audio handling, long-input VAE encoding, encoded-silence extension, and inference documentation. |
-| Existing integrations | ComfyUI, Reactor, evaluation tools, examples, and training guides from the previous baseline remain integrated; upstream did not change them in this update. |
-| SolarWM adaptation | Upstream `scripts/render.py` and `tools/omni_preencode.py` map to `solar/renderer/render.py` and `solar/renderer/preencode.py`. Causal and silence updates live in `solar/renderer/causal.py` and `solar/renderer/silence.py`, keeping shared MiniMax-H3 backend files unchanged. Reactor's optimization helpers support both the merged native model and the earlier PEFT-wrapped model. Documentation lives in `docs/solar_renderer/`; use `python -m solar.renderer` for rendering. |
-
-The separate [`data-engine/solar_renderer-data`](../../data-engine/README.md)
-submodule follows upstream's `data` branch and is pinned independently in the
-parent repository; this `main` synchronization record does not change its revision.
