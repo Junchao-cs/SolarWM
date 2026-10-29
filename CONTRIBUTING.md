@@ -24,22 +24,24 @@ indexes must use relative paths or explicit `/path/to/...` placeholders.
 New model stages require configuration, data, objective, checkpoint, inference,
 validation, and runtime tests before they are registered as supported routes.
 
-## Source layout
+## Reactor checks
 
-| Directory | Contents |
-| --- | --- |
-| `solar/` | Shared Python package and model backends. |
-| `configs/solar_wm/`, `docs/solar_wm/` | Camera-controlled world-model recipes and guides. |
-| `configs/solar_renderer/`, `docs/solar_renderer/` | Structure-conditioned rendering recipes and guides. |
-| `deploy/` | Realtime, Reactor and ComfyUI applications. |
-| `data-engine/` | Independently versioned data pipeline submodules. |
-| `examples/` | Example inputs and prompts. |
+For changes to the Reactor application, use a separate Python 3.12 environment
+with `reactor-runtime==3.8.3`, Pillow and pytest. From
+`deploy/solar_renderer/reactor/`, run:
 
-See the [architecture](docs/solar_wm/architecture.md),
-[data contract](docs/solar_wm/data-contract.md), and
-[developer guides](docs/development/README.md) before changing shared behavior.
+```bash
+PYTHONPATH=. python -m pytest tests/ -q
+python -m reactor_runtime.schema --path . --out schema.json
+reactor validate
+cd demo
+npm ci
+npm run build
+```
+
+In the renderer environment, run `python -m pytest tests/renderer/test_reactor_integration.py -q` from the repository root.
+These checks do not establish GPU inference or Docker execution.
 
 Keep usage guides focused on current inputs, commands, outputs and limitations.
-Record one-time migrations and integration history in commit or release notes.
-Source attribution belongs in `NOTICE`; versioned validation reports must identify
-the measured runtime and distinguish CPU checks from GPU and quality evidence.
+Record one-time migrations and integration history in commit or release notes;
+keep source attribution in `NOTICE`.

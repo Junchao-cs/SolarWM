@@ -153,9 +153,6 @@ throughout each render.
 There are no driving keys or game-engine controls: motion is supplied by the uploaded video.
 The decoder waits for the necessary temporal overlap before showing its first frames.
 
-For application tests, source staging and the module map, see the
-[Reactor developer guide](../../../docs/development/reactor.md).
-
 ## Credits and licence
 
 Thanks to [Rising0321](https://github.com/Rising0321) for the Reactor integration.
