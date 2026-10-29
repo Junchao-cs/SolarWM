@@ -168,20 +168,6 @@ subject to the LTX-2.x Community License, and the MiniMax H3 Community License
 contains territory restrictions. Those packages are not relicensed under the
 Solar code license.
 
-<a id="star-history"></a>
-
-## 🌟 Star History
-
-<p align="center">
-  <a href="https://github.com/Junchao-cs/SolarWM/stargazers">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Junchao-cs/SolarWM&amp;type=Date&amp;theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Junchao-cs/SolarWM&amp;type=Date">
-      <img src="https://api.star-history.com/svg?repos=Junchao-cs/SolarWM&amp;type=Date" width="800" alt="Junchao-cs/SolarWM star history chart">
-    </picture>
-  </a>
-</p>
-
 <a id="citation"></a>
 <a id="bibtex"></a>
 
