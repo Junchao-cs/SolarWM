@@ -137,3 +137,15 @@ def test_result_reuse_requires_current_condition_and_all_outputs(tmp_path):
     (tmp_path / "case.storyboard.jpg").unlink()
     with pytest.raises(ValueError, match="storyboard"):
         cache.verify_completed_result(manifest, expected_identity=identity, save_latents=False)
+
+
+def test_result_identity_distinguishes_sp_layouts_and_preserves_sp8_default(tmp_path):
+    args, _row, _case, condition = _prepared(tmp_path)
+    inputs = dict(checkpoint_sha256="checkpoint", silence_sha256="silence", seed=42)
+    original = cache.result_identity(args, condition, **inputs)
+    args.config["distributed"] = {"sequence_parallel_size": 8}
+    assert cache.result_identity(args, condition, **inputs) == original
+    args.config["distributed"]["sequence_parallel_size"] = 2
+    sp2 = cache.result_identity(args, condition, **inputs)
+    args.config["distributed"]["sequence_parallel_size"] = 4
+    assert len({original, sp2, cache.result_identity(args, condition, **inputs)}) == 3

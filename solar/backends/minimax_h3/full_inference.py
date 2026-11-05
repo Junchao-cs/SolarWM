@@ -1,4 +1,4 @@
-"""Bucket-native, source-length H3 Stage2 SGF evaluation with SP8.
+"""Bucket-native, source-length H3 Stage2 SGF evaluation with one SP group.
 
 Preparation encodes only the caption/first-image condition. Generation uses
 the existing student raw-KV W6 sampler and the official H3 temporal VAE.
@@ -293,8 +293,8 @@ def generate(args):
     torch.set_num_threads(2)
     local = int(os.environ["LOCAL_RANK"])
     rank, world = dist.get_rank(), dist.get_world_size()
-    if world != 8:
-        raise ValueError("Full test-set worker requires exactly eight GPUs, SP8")
+    if world != int(args.config["distributed"]["sequence_parallel_size"]):
+        raise ValueError("Full test-set worker requires exactly one sequence-parallel group")
     device = torch.device("cuda", local)
     cfg = args.config
     torch.manual_seed(42)
@@ -307,6 +307,16 @@ def generate(args):
     step = int(weights_id.rsplit("step=", 1)[1])
     if step != args.expected_step:
         raise ValueError(f"Expected checkpoint step {args.expected_step}, found {step}")
+    memory_identity = None
+    memory_profile = cfg["inference"].get("memory") or {}
+    if memory_profile.get("enabled", False):
+        from .memory_inference import attach_memory
+
+        model, memory_identity = attach_memory(model, lora, memory_profile)
+        identities = [None] * world
+        dist.all_gather_object(identities, memory_identity)
+        if any(item != memory_identity for item in identities):
+            raise ValueError("Ranks loaded different Memory weights or parent LoRA")
     model.eval().requires_grad_(False)
     silence, _ = load_silence_latents(args.silence, pixel_frames=158)
     silence = (
@@ -322,7 +332,7 @@ def generate(args):
     if vae is not None:
         vae.set_attention_backend("native")
     print(
-        f"MODEL_READY rank={rank} weight_source={args.weight_source} step={step} sp=8"
+        f"MODEL_READY rank={rank} weight_source={args.weight_source} step={step} sp={world}"
         f" memory_gib={torch.cuda.memory_allocated() / 2**30:.2f}",
         flush=True,
     )
@@ -347,6 +357,7 @@ def generate(args):
                 checkpoint_sha256=checkpoint_receipt_sha256,
                 silence_sha256=silence_sha256,
                 seed=noise_seed,
+                memory_identity=memory_identity,
             )
             if manifest.is_file():
                 verify_completed_result(
@@ -397,9 +408,23 @@ def generate(args):
             )
             broadcast_sequence_parallel_tensor(audio_t)
             audio = scale_noise(silence, random_like(silence), audio_t)
+            memory_forward = None
+            camera_K = values["K"]
+            if memory_identity is not None:
+                import numpy as np
+
+                from .camera import wan_fixed_intrinsics_like
+                from .memory_stage2_rollout import Stage2MemoryForward
+
+                # Retrieve from completed generated history once per chunk; retrieval
+                # and PRoPE both use H3's fixed focal, in first-camera coordinates.
+                fixed_K = wan_fixed_intrinsics_like(camera_K.numpy()).copy()
+                camera_K = torch.from_numpy(fixed_K)
+                poses = np.linalg.inv(values["viewmats"].numpy().astype(np.float64))
+                memory_forward = Stage2MemoryForward(poses, fixed_K)
             views, intrinsics = (
                 values["viewmats"].unsqueeze(0).to(device),
-                values["K"].unsqueeze(0).to(device),
+                camera_K.unsqueeze(0).to(device),
             )
             views = torch.cat((views[:, :1], views), 1)
             intrinsics = torch.cat((intrinsics[:, :1], intrinsics), 1)
@@ -414,7 +439,7 @@ def generate(args):
                 48,
                 84,
                 0.999,
-                True,
+                world > 1,
             )
             noise = random_like(torch.empty(1, 24, geometry.rollout_latents, 48, 84, device=device))
             dist.barrier()
@@ -440,6 +465,7 @@ def generate(args):
                 progress=progress,
                 inference_full_length=True,
                 output_device="cpu" if cfg["inference"].get("stream_decode", False) else None,
+                inference_forward=memory_forward,
             )
             torch.cuda.synchronize()
             dist.barrier()
@@ -538,6 +564,13 @@ def generate(args):
                             raise ValueError("Written output frame count or FPS differs")
                         actual[len(actual) - 1]
                         del actual
+                    memory_artifacts = {}
+                    if memory_forward is not None:
+                        from .memory_inference import save_memory_trace
+
+                        memory_artifacts = save_memory_trace(
+                            dest, row["key"], memory_forward, memory_identity
+                        )
                     elapsed = time.perf_counter() - started
                     atomic_json(
                         manifest,
@@ -551,8 +584,8 @@ def generate(args):
                             checkpoint_receipt_sha256=checkpoint_receipt_sha256,
                             condition_sha256=condition_receipt["condition_sha256"],
                             weights_source=args.weight_source,
-                            sp_size=8,
-                            world_size=8,
+                            sp_size=world,
+                            world_size=world,
                             geometry=asdict(geometry),
                             fps=fps,
                             model_fps=24,
@@ -590,6 +623,7 @@ def generate(args):
                             ),
                             visual_samples=visual,
                             gpu_peak_memory_gib=torch.cuda.max_memory_allocated() / 2**30,
+                            **memory_artifacts,
                         ),
                     )
                     print("RESULT " + json.dumps(json.loads(manifest.read_text())), flush=True)
@@ -602,7 +636,7 @@ def generate(args):
                         )
                         dist.broadcast(event, src=0)
             dist.barrier()
-            del rollout, inputs, noise, values, anchor, audio, condition
+            del rollout, inputs, noise, values, anchor, audio, condition, memory_forward
             gc.collect()
             torch.cuda.empty_cache()
     finally:
@@ -610,7 +644,7 @@ def generate(args):
 
 
 def run_source_length_inference(config):
-    """Public ``solar infer`` route: DP conditioning, then one SP8 rollout group."""
+    """Public ``solar infer`` route with one SP group; independent jobs shard cases."""
     from types import SimpleNamespace
 
     import torch
@@ -636,12 +670,23 @@ def run_source_length_inference(config):
     if int(os.environ.get("RANK", "0")) == 0:
         (Path(args.output_dir) / "WORKER_COMPLETE.json").unlink(missing_ok=True)
     rows = selected_rows(args)
-    if int(os.environ.get("WORLD_SIZE", 0)) != 8 or int(os.environ.get("LOCAL_WORLD_SIZE", 0)) != 8:
+    sp = int(config["distributed"]["sequence_parallel_size"])
+    if (
+        sp not in {1, 2, 4, 8}
+        or int(config["distributed"]["world_size"]) != sp
+        or int(os.environ.get("WORLD_SIZE", 0)) != sp
+        or int(os.environ.get("LOCAL_WORLD_SIZE", 0)) != sp
+    ):
         raise ValueError(
-            "Source-length inference requires a single node with eight torchrun workers"
+            "Source-length inference requires one single-node SP1/2/4/8 torchrun group"
         )
     local = int(os.environ["LOCAL_RANK"])
-    initialize_distributed(sp_size=8, local_rank=local)
+    if sp == 1 and not dist.is_initialized():
+        # The source-length result/decode protocol uses collectives even for a
+        # single GPU; the shared training helper intentionally skips this case.
+        torch.cuda.set_device(local)
+        dist.init_process_group(backend="nccl", init_method="env://")
+    initialize_distributed(sp_size=sp, local_rank=local)
     phase = inference.get("phase", "all")
     if phase in {"prepare", "all"}:
         prepare(args)

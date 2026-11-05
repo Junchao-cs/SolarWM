@@ -19,6 +19,10 @@ class MiniMaxH3Backend:
 
     def validate_config(self, config: Mapping[str, Any]) -> None:
         validate_h3_config(config)
+        if config.get("inference", {}).get("memory") is not None:
+            from .memory_inference import validate_memory_inference
+
+            validate_memory_inference(config)
 
     def train(self, config: Mapping[str, Any]) -> int:
         self.validate_config(config)

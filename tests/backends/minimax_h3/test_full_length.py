@@ -53,6 +53,13 @@ def test_source_length_rejects_another_topology(field, value):
         validate_h3_config(config)
 
 
+@pytest.mark.parametrize("sp", [1, 2, 4, 8])
+def test_source_length_accepts_independent_single_sp_groups(sp):
+    config = load_config(EXAMPLE).mutable_copy()
+    config["distributed"].update(world_size=sp, sequence_parallel_size=sp)
+    assert validate_h3_config(config).sequence_parallel_size == sp
+
+
 def test_full_length_rollout_uses_every_chunk_and_keeps_training_strict(monkeypatch):
     from types import SimpleNamespace
 
@@ -86,3 +93,50 @@ def test_full_length_rollout_uses_every_chunk_and_keeps_training_strict(monkeypa
         sgf.h3_sgf_rollout(
             student=None, inputs=inputs, noise=noise, exit_index=2, inference_full_length=True
         )
+
+
+@pytest.mark.parametrize("memory", ["absent", None, {}, {"enabled": False}])
+def test_generation_without_memory_skips_adapter_loading(monkeypatch, memory):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import torch.distributed as dist
+
+    from solar.backends.minimax_h3 import (
+        artifacts,
+        full_inference,
+        lora,
+        memory_inference,
+        optional,
+        runtime,
+        weights,
+    )
+
+    config = load_config(EXAMPLE).mutable_copy()
+    if memory != "absent":
+        config["inference"]["memory"] = memory
+    model = Mock()
+    monkeypatch.setenv("LOCAL_RANK", "0")
+    monkeypatch.setattr(dist, "get_rank", lambda: 0)
+    monkeypatch.setattr(dist, "get_world_size", lambda: 8)
+    monkeypatch.setattr(
+        optional, "load_transformer", lambda *_args, **_kwargs: SimpleNamespace(transformer=model)
+    )
+    monkeypatch.setattr(runtime, "_base_model_load_receipt", lambda *_args: {})
+    monkeypatch.setattr(lora, "inject_h3_lora", lambda *_args, **_kwargs: (model, None))
+    monkeypatch.setattr(weights, "load_initial_weights", lambda *_args: "stage2:ema:step=3900")
+    attach = Mock(side_effect=AssertionError("Memory adapter must remain unloaded"))
+    monkeypatch.setattr(memory_inference, "attach_memory", attach)
+    monkeypatch.setattr(
+        artifacts, "load_silence_latents", Mock(side_effect=RuntimeError("condition-load-reached"))
+    )
+    args = SimpleNamespace(
+        config=config,
+        checkpoint="/unused",
+        weight_source="ema",
+        expected_step=3900,
+        silence="/unused",
+    )
+    with pytest.raises(RuntimeError, match="condition-load-reached"):
+        full_inference.generate(args)
+    attach.assert_not_called()

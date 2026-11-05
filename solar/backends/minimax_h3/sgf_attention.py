@@ -60,6 +60,9 @@ class H3SGFAttention:
 
 
 def prepare_sgf_rotaries(control: H3SGFAttention, rope):
+    custom = getattr(control, "prepare_rotaries", None)
+    if custom is not None:
+        return custom(rope)
     from dataclasses import replace
 
     layout = control.layout
@@ -90,6 +93,9 @@ def _cat_rotary(*rotaries):
 
 def sgf_attention(q, k, v, *, control: H3SGFAttention, layer: int, apply_rotary, attend):
     """Attend over full sequence / local heads after Ulysses all-to-all."""
+    custom = getattr(control, "attend", None)
+    if custom is not None:
+        return custom(q, k, v, layer=layer, apply_rotary=apply_rotary, attend=attend)
     layout = control.layout
     condition_rows = int(layout.condition_indices.numel())
     prefix = condition_rows + int(layout.audio_indices.numel())

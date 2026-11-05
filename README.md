@@ -63,6 +63,8 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 
 ## 📰 News
 
+- **November 5, 2026:** We release **SolarWM-H3 Memory** ([Blog](https://solarx-team.github.io/SolarWM-H3-Memory) · [Weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B/tree/main/SolarWM-h3-33B-memory-stage1-158f) · [Usage](docs/solar_wm/backends/minimax-h3.md#enable-memory)), improving long-term scene consistency and preserving visual details across revisits.
+
 - **October 22, 2026:** We release **SolarWM-H3 Realtime** ([Blog](https://solarx-team.github.io/SolarWM-H3-Realtime/)), enabling **low-latency interactive video generation** from an image and a prompt, with real-time camera control ([Code](deploy/solar_wm/)).
 
 - **October 16, 2026:** We release **H3 Streaming VAE Decoder** ([Blog](https://solarx-team.github.io/H3-Streaming-VAE-Decoder/)), enabling **low-latency streaming video decoding** that produces frames as latents arrive. It supports both the official MiniMax-H3 VAE and NVIDIA’s distilled StreamRender-H3 decoder ([Code](deploy/solar_wm/)).
@@ -174,7 +176,7 @@ Solar code license.
 ## 📖 BibTeX
 
 If you use SolarWM, please cite the paper below. Citations for SolarRenderer
-and the two technical blogs are available in the expandable sections.
+and the technical blogs are available in the expandable sections.
 
 ```bibtex
 @misc{huang2026solarwmopendatascalable,
@@ -234,6 +236,24 @@ and the two technical blogs are available in the expandable sections.
   month        = {oct},
   howpublished = {\url{https://solarx-team.github.io/H3-Streaming-VAE-Decoder/}},
   note         = {SolarX-Team blog post}
+}
+```
+
+</details>
+
+<details>
+<summary>SolarWM-H3 + Memory</summary>
+
+```bibtex
+@misc{zhang2026solarwmmemory,
+  title  = {{SolarWM-H3 + Memory}: Training Memory For Video World Model Is Easier Than You Think},
+  author = {Zhang, Zixin and Huang, Junchao and Du, Yihua and
+            Lu, Dongyue and Zhao, Zhuoran and Kong, Xianghao and
+            Fang, Guian and Yan, Dongyu and Liu, Yaoyang and Qian, Shengju},
+  year   = {2026},
+  month  = {nov},
+  note   = {SolarX-Team technical blog},
+  url    = {https://solarx-team.github.io/SolarWM-H3-Memory}
 }
 ```
 

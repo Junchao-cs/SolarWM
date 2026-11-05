@@ -52,6 +52,27 @@ def build_parser() -> argparse.ArgumentParser:
     for action in ("train", "infer", "preencode"):
         child = commands.add_parser(action, help=f"run the unified {action} entrypoint")
         _common_config(child)
+        if action == "infer":
+            memory = child.add_mutually_exclusive_group()
+            memory.add_argument(
+                "--memory",
+                dest="memory_enabled",
+                action="store_true",
+                default=None,
+                help="enable H3 Stage2 Memory inference",
+            )
+            memory.add_argument(
+                "--no-memory",
+                dest="memory_enabled",
+                action="store_false",
+                default=None,
+                help="use the original Stage2 inference path",
+            )
+            child.add_argument(
+                "--memory-lora",
+                type=Path,
+                help="LIVE Memory checkpoint directory (or adapter.pt with receipts)",
+            )
 
     config = commands.add_parser("config", help="resolve and inspect a run config")
     config_commands = config.add_subparsers(dest="config_command", required=True)
@@ -139,7 +160,18 @@ def _write_json(value: Any, output: Path | None = None) -> None:
 
 
 def _run_backend(args: argparse.Namespace) -> int:
-    resolved = load_config(args.config, args.set)
+    overrides = list(args.set)
+    memory_enabled = getattr(args, "memory_enabled", None)
+    memory_lora = getattr(args, "memory_lora", None)
+    if memory_enabled is not None:
+        overrides.append("inference.memory.enabled=" + json.dumps(memory_enabled))
+    if memory_lora is not None:
+        overrides.append("inference.memory.path=" + json.dumps(str(memory_lora)))
+    resolved = load_config(args.config, overrides)
+    if (memory_enabled is not None or memory_lora is not None) and str(
+        resolved.values.get("model", {}).get("family", "")
+    ).replace("-", "_") != "minimax_h3":
+        raise SolarWMError("--memory/--no-memory/--memory-lora are H3 inference options")
     reject_inline_secrets(resolved.values)
     configured_action = str(resolved.values["action"])
     if configured_action != args.command:

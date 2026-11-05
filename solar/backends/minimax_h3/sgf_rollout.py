@@ -129,7 +129,11 @@ def h3_sgf_rollout(
     progress=None,
     inference_full_length=False,
     output_device=None,
+    inference_forward=None,
 ):
+    if inference_forward is not None and not inference_full_length:
+        raise ValueError("Custom Memory forward is source-length inference-only")
+    forward = h3_student_forward if inference_forward is None else inference_forward
     if output_device is not None and not inference_full_length:
         raise ValueError("Output offload is inference-only")
     if inference_full_length:
@@ -178,7 +182,7 @@ def h3_sgf_rollout(
                             if output_device
                             else current.detach().clone()
                         )
-                    x0 = h3_student_forward(
+                    x0 = forward(
                         student,
                         inputs,
                         current,
@@ -199,7 +203,7 @@ def h3_sgf_rollout(
                             schedule.timesteps[step_index + 1],
                         )
                 committed.append(exit_x0.to(output_device) if output_device else exit_x0)
-                h3_student_forward(
+                forward(
                     student,
                     inputs,
                     exit_x0,

@@ -124,12 +124,19 @@ def prepared_case_receipt(case: Path, row: dict[str, Any], args: Any) -> dict[st
 
 
 def result_identity(
-    args: Any, condition: dict[str, Any], *, checkpoint_sha256: str, silence_sha256: str, seed: int
+    args: Any,
+    condition: dict[str, Any],
+    *,
+    checkpoint_sha256: str,
+    silence_sha256: str,
+    seed: int,
+    memory_identity: dict[str, Any] | None = None,
 ) -> str:
     return hashlib.sha256(
         canonical_json(
             {
                 "schema": "solarwm.h3-source-result-inputs.v1",
+                **({"memory": memory_identity} if memory_identity is not None else {}),
                 "preparation_identity": condition["preparation_identity"],
                 "condition_sha256": condition["condition_sha256"],
                 "checkpoint_receipt_sha256": checkpoint_sha256,
@@ -137,6 +144,11 @@ def result_identity(
                 "silence_sha256": silence_sha256,
                 "noise_seed": seed,
                 "fps_policy": args.fps_policy,
+                **(
+                    {"sp_size": args.config["distributed"]["sequence_parallel_size"]}
+                    if args.config.get("distributed", {}).get("sequence_parallel_size", 8) != 8
+                    else {}
+                ),
                 "save_latents": bool(args.config["inference"].get("save_latents", False)),
                 **(
                     {"stream_decode": True}
@@ -161,6 +173,10 @@ def verify_completed_result(manifest: Path, *, expected_identity: str, save_late
         suffixes.pop(".compare.mp4")
     if save_latents:
         suffixes[".latents.safetensors"] = "latents_sha256"
+    if receipt.get("memory", {}).get("enabled", False):
+        suffixes[".memory.json"] = "memory_trace_sha256"
+        if receipt["memory"].get("save_bank", True):
+            suffixes[".memory-bank.safetensors"] = "memory_bank_sha256"
     for suffix, field in suffixes.items():
         path = manifest.with_name(manifest.stem + suffix)
         if not path.is_file() or file_sha256(path) != receipt.get(field):

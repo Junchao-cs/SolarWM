@@ -94,10 +94,9 @@ hf download junchaoh-cs/SolarWM-H3-33B \
 | `SolarWM-h3-33B-tf-stage1-158f` | Stage1 step 3000 |
 | `SolarWM-h3-33B-sgf-stage2-158f-fix` | Stage2 step 3900 |
 
-For Stage2 inference, we recommend
-`SolarWM-h3-33B-sgf-stage2-158f-fix` (step 3900 EMA), which supersedes the
-original step 1200 release and improves fine-detail quality, especially in tree
-regions. Use the `-fix` checkpoint directory with
+For Stage2 inference, use
+`SolarWM-h3-33B-sgf-stage2-158f-fix` (step 3900 EMA).
+Use the `-fix` checkpoint directory with
 `checkpoint.weight_source=ema`.
 
 Validation selects fixed cases from the test index automatically. Stage1 also
@@ -254,6 +253,33 @@ The camera member contains absolute `c2w` matrices, one per source frame;
 intrinsics use the source image coordinates. Results include videos, comparison
 previews and FPS measurements. For videos longer than 960 frames, add
 `--set inference.stream_decode=true`.
+
+### Enable Memory
+
+Memory improves long-video consistency by retrieving previously generated
+frames. Download the [Memory LoRA](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B/blob/main/SolarWM-h3-33B-memory-stage1-158f/README.md)
+into the same model root:
+
+```bash
+hf download junchaoh-cs/SolarWM-H3-33B \
+  --include "SolarWM-h3-33B-memory-stage1-158f/**" \
+  --local-dir "$SOLAR_MODEL_ROOT"
+```
+
+Append these options to the **full-length Stage2 inference** command above:
+
+```bash
+  --memory \
+  --memory-lora "$SOLAR_MODEL_ROOT/SolarWM-h3-33B-memory-stage1-158f" \
+  --set inference.memory.save_bank=false \
+  --set inference.stream_decode=true \
+  --set runtime.output_dir="$SOLAR_OUTPUT_ROOT/h3-memory"
+```
+
+This adds the released LIVE Memory LoRA (step1050) on top of official Stage2
+EMA (step3900), with both LoRA scales set to 1. Keep `adapter.pt`,
+`checkpoint-manifest.json` and `COMPLETE.json` together. Retrieval and KV caching
+are enabled automatically; `--no-memory` disables Memory.
 
 ## Optional preencoding
 

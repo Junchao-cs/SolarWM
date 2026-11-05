@@ -84,7 +84,7 @@ def prepare_demo(row, args, components, device):
         .expand(len(idx), -1, -1)
         .contiguous()
     )
-    caption = (case / "source.prompt.txt").read_text().strip()
+    caption = (case / "source.prompt.txt").read_text(encoding="utf-8").strip()
     if caption != row["caption"].strip() or not caption:
         raise ValueError("Demo caption changed")
     with torch.inference_mode():

@@ -238,3 +238,21 @@ assert backend.family == 'minimax_h3'
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("memory", [None, {}, {"enabled": False, "path": "/missing/adapter"}])
+def test_disabled_memory_config_does_not_require_a_checkpoint(memory):
+    from solar.backends.minimax_h3.memory_inference import validate_memory_inference
+
+    config = load_config(INFER).mutable_copy()
+    config["inference"] = {"memory": memory}
+    load_backend("minimax_h3").validate_config(config)
+    validate_memory_inference(config)
+
+
+@pytest.mark.parametrize("memory", [False, [], "", {"enabled": "false"}])
+def test_invalid_memory_config_is_rejected(memory):
+    config = load_config(INFER).mutable_copy()
+    config["inference"] = {"memory": memory}
+    with pytest.raises(ConfigurationError, match=r"inference\.memory"):
+        load_backend("minimax_h3").validate_config(config)

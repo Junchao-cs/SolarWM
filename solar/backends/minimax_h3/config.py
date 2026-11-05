@@ -398,9 +398,11 @@ def _validate_inference_distributed(
         "sequence_parallel_size",
         "distributed",
     )
-    expected_sp = 8 if full_length else (4 if stage == "stage2" else 2)
-    if full_length and world_size != 8:
-        raise ConfigurationError("Source-length H3 inference requires one eight-GPU SP8 worker")
+    expected_sp = sequence_parallel if full_length else (4 if stage == "stage2" else 2)
+    if full_length and (world_size != sequence_parallel or sequence_parallel not in {1, 2, 4, 8}):
+        raise ConfigurationError(
+            "Source-length H3 inference requires one SP1/2/4/8 group per torchrun"
+        )
     if sequence_parallel != expected_sp or world_size % sequence_parallel:
         raise ConfigurationError(f"H3 inference requires a world divisible by SP{expected_sp}")
     for key, expected in (
