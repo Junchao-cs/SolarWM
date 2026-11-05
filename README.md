@@ -246,14 +246,14 @@ and the technical blogs are available in the expandable sections.
 
 ```bibtex
 @misc{zhang2026solarwmmemory,
-  title  = {{SolarWM-H3 + Memory}: Training Memory For Video World Model Is Easier Than You Think},
+  title  = {{SolarWM H3 + Memory}: Training Memory For Video World Model Is Easier Than You Think},
   author = {Zhang, Zixin and Huang, Junchao and Du, Yihua and
             Lu, Dongyue and Zhao, Zhuoran and Kong, Xianghao and
-            Fang, Guian and Yan, Dongyu and Liu, Yaoyang and Qian, Shengju},
+            Chen, Bohong and Fang, Guian and Yan, Dongyu and Liu, Yaoyang and Qian, Shengju},
   year   = {2026},
-  month  = {nov},
+  month  = nov,
   note   = {SolarX-Team technical blog},
-  url    = {https://solarx-team.github.io/SolarWM-H3-Memory}
+  url    = {https://solarx-team.github.io/SolarWM-H3-Memory/}
 }
 ```
 
