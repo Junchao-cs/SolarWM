@@ -89,12 +89,15 @@ include-package-data = false
 "solar.renderer" = ["assets/*.json", "assets/*.safetensors"]
 "solar.examples" = ["*/first.png", "*/prompt.txt"]
 "deploy.solar_wm" = [
-  "README.md", "requirements.txt", "*.example.json", "launch.sh",
+  "README.md", "requirements.txt", "launch.sh",
 ]
-"deploy.solar_wm.solarwm_web" = [
-  "static/*.html", "static/*.js", "static/*.png",
-  "acceleration/*.json", "media/*.c", "vae/tables/*.json", "vae/tables/*.pt",
-]
+"deploy.solar_wm.backends.standard" = ["*.example.json"]
+"deploy.solar_wm.backends.memory" = ["*.example.json"]
+"deploy.solar_wm.backends.standard.acceleration" = ["*.json"]
+"deploy.solar_wm.backends.standard.acceleration.operators" = ["recipe.json"]
+"deploy.solar_wm.web" = ["static/*.html", "static/*.js", "static/*.png"]
+"deploy.solar_wm.shared.media" = ["*.c"]
+"deploy.solar_wm.shared.vae" = ["tables/*.json", "tables/*.pt"]
 "solar.backends.wan22.runtime.architectures" = ["*.json"]
 "solar.backends.wan22.runtime.modeling" = ["NOTICE.md"]
 

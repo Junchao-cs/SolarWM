@@ -59,7 +59,7 @@ jobs:
               for path in Path("deploy/solar_wm").rglob("*")
               if path.is_file() and path.suffix in {
                   ".py", ".md", ".txt", ".json", ".sh", ".png",
-                  ".html", ".js", ".c", ".pt",
+                  ".html", ".js", ".cjs", ".c", ".pt",
               }
           }
           assert realtime_files
@@ -97,6 +97,7 @@ jobs:
           )
           assert required_wheel <= names, sorted(required_wheel - names)
           assert not any(name.startswith("deploy/solar_wm/cases/") for name in names)
+          assert not any("/solarwm_web/" in name for name in names)
           assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
           assert any(name.endswith(".dist-info/licenses/NOTICE") for name in names)
 
@@ -144,6 +145,7 @@ jobs:
           required_sdist.add("deploy/solar_wm/.ruff.toml")
           assert required_sdist <= names, sorted(required_sdist - names)
           assert not any(name.startswith("deploy/solar_wm/cases/") for name in names)
+          assert not any(name.startswith("src/solarwm/realtime_interaction/") for name in names)
           assert not any("/node_modules/" in name or "/.solarwm-source/" in name for name in names)
           PY
           python -m pip install --force-reinstall --no-deps dist/*.whl
@@ -154,10 +156,11 @@ jobs:
           python -m solar config routes
           solar-renderer --help
           python -m solar.renderer.training --help
-          python -m deploy.solar_wm.solarwm_web.configure --help
+          python -m deploy.solar_wm.backends.standard.configure --help
+          python -m deploy.solar_wm.backends.memory.configure --help
           python - <<'PY'
           from pathlib import Path
-          from deploy.solar_wm.solarwm_web.examples import bundled_cases
+          from deploy.solar_wm.shared.examples import bundled_cases
 
           cases = bundled_cases()
           assert cases

@@ -1,0 +1,1568 @@
+{
+  "schema": 1,
+  "torch": "2.10",
+  "triton": "3.6",
+  "kernels": {
+    "c94f2c23d741c9615866f0511b172c6cd4ba5273410543cffaf1fc996215fe50": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": false,
+        "offset": "r0_1 + 5376 * x0"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "a58e75c2c04dd6e06c4523dbafeed369e66fbc1cd8c5bb9ecaf00ecb4707baa3": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": false,
+        "offsets": [
+          "x2",
+          "x1",
+          "x1"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "1ead84ba59c7f8137c52796d6f1f7354cbc651bc798b6f71f9dd6cc49e0f9c76": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "4542ec9cd5f283347115105f4481f090daf11357e762ca9c41edb42935970781": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": false,
+        "offsets": [
+          "x2",
+          "x1",
+          "x1"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "bfe7bacf4591afae745e9c2d22c5a06ac55b6a27ee0e4498bbe6467d26053f71": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "ca23ea6ee2b4111ded5560714ec3fa2c7d9d7ce31db0a1168626653d31201c72": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "98d88f139edc4d62a478eec2dc36fed0f764b92b368c15573b2e010e1e516365": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": true,
+        "offset": "r0_1 + 5376 * x0 + 5376 * ((5573 + ks0) // 8)"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "be95880861ad274cee032079ca3c94cc759ad644ce5ba8b3fed786c6f0616bd4": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "49050e8407e39ee5745e5f9ac3151503be2580e4ad1b3b0a18a54f1b39b0b304": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "968a57fa225b06016da7c87ee1d5e72ca839e2bfb9c88a215615d58326ae0754": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "a0506b2e5b81ed2853fb903ddca79449a79ad3eb983841788b1860d45d48f63e": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "361fa4ae475bccf1376a80bd26ed25ff36b9dc6208c63bf3624326e040fc68db": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "f1086c729f64d4cd84ed42c44311aa577fdddb2474e0aaa1aa913b193cd4fac3": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "d96031c4e3a6423ac41550d3552220a7c746ce4e43f95d61be59b4cf370c94f7": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": true,
+        "offset": "r0_1 + 5376 * x0 + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "19f523228761d8519a72e52d380c837f64fec6f1777114da77b7b1cc7021c0c5": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "0b57996b27161fc5e2fe6099b36c816e5f85123b15bcb0217c62e37bbe4d5558": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "48768671ead5c1607f5546009df8eeecce0f0cf6d44fab8518081e3cf5b02973": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "5d07d95fdb409e6e1e273d4d53f3e3af0a29f76efb11f9bda0f7f2cccae0a8f1": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "6838557e48598f3ab896e05cea559a99805210d060893282d12832efc6974e5e": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "618f47fb4c992827823d0cc5c08a870adc65aeb115ddaa5093f66ad279d914af": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "40f1a038f1bbddeca1140cc58bfd0a71fa41ac49ee2f3cd251f4c47ce7c54955": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": true,
+        "offset": "r0_1 + 5376 * x0 + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "e55963aedd6920c001b45aa22edfea1cc4b3cd8740fa7205f5f4eb45e008110d": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "5144307499d7ab763072a62d5a803fa6e9c12ff8d566295ef374be3ea26c2d66": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "c7ccaef229a54424fdf77df275da30200b7a6bf59d5fa2e643ef22c53af32c21": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "47b5cfe3ca87a54055d385ae4df97b72770ba6bcc045091074d89b5b37bd7693": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "cb8ffa636d1107d0bc71109e14a1e40d2438618725e6e287b65e67970f24deb8": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "9de47ac699f9493d7c93d598d1982bf86c2f5395d71da891ffc04e62275caa8d": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "f3dc325b75751d036b336c280402ab460a4a962f0fe90424bbbc2ffad897d716": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": true,
+        "offset": "r0_1 + 5376 * x0 + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "ea510898c891ffb8bdc9e4e54a7310c35ad053087939e892d6b9868a787fd3b4": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "cfdb55886bdc16b2556f4eadceac641dfd0b318ea9e717c640463740f9c05db4": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "658d8dfe738f2f86ecb5dc37beae055aee192a657f5f4af7a59032cb8a58c791": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "f8669e2812a7b59b76e8b03e9536911306a2bb14861a7ba5e9eff2852bd5a631": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "6b2e7892807d5ae2684d0774b17e67122b550f771fc1045c5dd4f2c9ba9d5ebf": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "77369633d00ae4b98c16d90a54f1d66040a8b705d84a537db01ea6cc1bfdde4c": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "702c52484ddc0bd0b94dc93bcadfa649cd20aae3edcc74341735706ddfc093ce": {
+      "role": "fma",
+      "kind": "reduce",
+      "contract": {
+        "kind": "reduce",
+        "has_symbol": true,
+        "offset": "3741696 + r0_1 + 5376 * x0 + 5376 * (ks0 // 8) + 5376 * ((5569 + ks0) // 8) + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)"
+      },
+      "config": {
+        "R0_BLOCK": 2048,
+        "XBLOCK": 1,
+        "num_stages": 1,
+        "num_warps": 16
+      }
+    },
+    "5a9e61cdbb39d96264de40466e30a0f0a1ccb9ed2c1564abdd2d68d568be769f": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "3741696 + x2 + 5376 * (ks0 // 8) + 5376 * ((5569 + ks0) // 8) + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "535fd266cf527cfa1813364fd251c335408627bec2a4afe7929d5cd6d9c01509": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "de82162228b089cdee6556c7cff17110c9cb22c4abc906646f7faf2db28fc1a6": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "903b5cdcbe12a9ff5ac571a2801d27e26ff4e14c4be20d6783b5a58ae574f987": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "15e960f4851b897cbdf5344a7889732323abc01f9a1528d052616a46f62980f2": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 12,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "eedd3f4094dfc583317746ec6f734e33b99ab8d3278ab6dcde5e1c14a32ff677": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 12
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "a42bd6e428f5989f36110267c95ccb6de4958c1eecee47b80a1587e2cac2a541": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": false,
+        "offsets": [
+          "x2",
+          "x1",
+          "x1"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "42fdd7983b1424ec391c64af6300edce4f001ce76f8ad79a01050e255d1b4977": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "40c1e75e829b73cd8617cad5d2328d67fc88c4daf7c8353500aa81d2f3f64e89": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": false,
+        "offsets": [
+          "x2",
+          "x1",
+          "x1"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "1781f83991c733a2f43d29e0bf764bfbf8a519e6748e998ac2cb08389c2c3cf2": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "de90ccbe37493005dbdf9c16b3b0eaafdf9980e355b6c1b3438738c74fa5ab7f": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": false,
+        "offset": "0",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "0b64978ac590293c5f1beb0ec94e4cc7dcd9ac55c87118f664b81633578eb842": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "1cc6a4c25cf53109ea6c6899436ad6b59f48a7a68df748034fc0e34f187c5fc7": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "0a6515289801377bcbb50e7897229f3fa0d762703d8cb096c15560458be4b5ba": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "607cfc7b24409b1b8d9629b10929bdeb158e936abb00b231f029fd2fd1cbda4b": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "faba151ba572f2bf6d0deb45161c0f1ecadf1ac387220068b7ddbf5e2b43f7df": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5573 + ks0) // 8",
+          "x1 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "174df23ff6cfc1ebf28df6ec8cbf8a6e1927c7bec50517b88ac515d8e5072cfa": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "51ee9b905a5ba0a9f224e9dbea3cf3a33f1e6a24291200c908dd7c952b6d5104": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "b3bef7f628d7da0fcfdc756f8f3fdc415dcb066d2e30ea60d5168f210be591aa": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "d2d55521f75bbbba896ab4710bdcc29dbc3cc1d418b39a78bcf9afee1b13fd2d": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "ba725f64702c6b7ca1062b5667b855a0780807b6f63cc6ada5c5d461c2aee8d1": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "a54a70c9b33a12e5d44a4a5c1d3e9fb02f5b49546f7a1f1fe189499a04b637ec": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "6e7059b91abece760a5dd74b1129f5f3cfe60cdf1a0d64dce8be50a87bbb1c99": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "c6fa4812507ef1df881f98136c384900242bbf1765844f21b4cfa1d5b31e38a5": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "19482394fc91f03786270126565413064eadd639df7ea1741ae36aebf4f44166": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "387ce6c99237d11bf4660f705bb2534a82a42fb2080fe1a4093cd2be967e56d9": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "67db5628e76b668f973b942ab7fd22255c38c669871845b47800521d98edb8e3": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "9241609a5e162ffbac8008c4b993f3e5c0242a4079f261382815ddf26950e0f6": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "df91668079e7e96477fd5c0087671d3651dadc4b49c106ce36ea7ff6f03142af": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "05a7bb86602ab6860b17ca664531c73d3a9dc3ca88e4c48def768e3322551b2f": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2 + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "5746f7414938de922294291e76126ff6ae2b751436d3478bfebcebd4a898dc34": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "e41d03f403aa14fb07b1ae4f7225801fac2e87c4f47bdd8f8476112e8b3c5116": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "9a1947c44a7eeb7bb9685a82024cc9df07bbe207ac2d476594604799df7e70fb": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "5f9774f621a919e37666ae98fd439d0bd9937f7865d43c0bc8c023ee971a62d4": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "x1 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "8521a27cc54fee3185248aac053dc66d19e7ac2048f308f5c8e426b3d2105762": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "3a783906b0a932ef5a2c14b8d9cd59b6ba11abedfbbdba2791fd5a9db526322a": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "3741696 + x2 + 5376 * (ks0 // 8) + 5376 * ((5569 + ks0) // 8) + 5376 * ((5570 + ks0) // 8) + 5376 * ((5571 + ks0) // 8) + 5376 * ((5572 + ks0) // 8) + 5376 * ((5573 + ks0) // 8)",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "95aae7c4f65d9b640dabab287761a71cc65e44882e43bb9122ca395214ed52db": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "global",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "38df3d46475aef5ad1df22b6d801199dd4a6745b48f2c4b0acd55f59f2aa6408": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 16128,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "797f8258d232aa9e2e7816c526dc883d0103ba3f8086665bb355af0f360920dd": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "ffn",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "775ed5ae5cfdb49b67f371820db91c37d80f5da45db806dbda1b2b8445504f6a": {
+      "role": "fma",
+      "kind": "pointwise",
+      "contract": {
+        "kind": "pointwise",
+        "bound": 9,
+        "shift": 0,
+        "has_symbol": true,
+        "offsets": [
+          "x2",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+          "696 + x1 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8"
+        ]
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "4f31e05ba1e43f3be3309fd3706e7b84a6a751f1b06f37e339cbdedd4947cd73": {
+      "role": "fma",
+      "kind": "residual",
+      "contract": {
+        "kind": "local",
+        "has_symbol": true,
+        "offset": "0 + 696 + ks0 // 8 + (5569 + ks0) // 8 + (5570 + ks0) // 8 + (5571 + ks0) // 8 + (5572 + ks0) // 8 + (5573 + ks0) // 8",
+        "index_bound": 9
+      },
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "9964cdbfc8d763a60c4846ac9828104db7be84da71d3392b764d0c06a63d3963": {
+      "role": "layout",
+      "kind": "gather",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "a045e8032a5a24226aec773802fc7947d384cd8cbfdefc24b71a804aa4901f77": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "b74a1cec08c79b54d202d3b8ffd1ecd960d104162e94d8184fd743afe81b443c": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "1016b81b4292a31889ae380d0e17548fa5dabd5415aa7e07a094dae59e99fcb7": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "3b4fc77006c5761230d66531007a4ab06e4b4319b2a82bb4a06464d0c8a1fc15": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "4de8b24b177a6281a590ed357b666619aaf7d284cd04d124ab0970fa0efa327f": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "ded0520d1659fe888b257902eb86ebd9b61c840970d0cc836608350592da5222": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "3d8571cef1d7820f9e0c240f551c48c9ff870fa4cf0aa320a5b88e72968650e0": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "9c97ab1fe2c2668fd5f1013abc1ce37133d77fd3c4e35f1f66401f5bf011e28b": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "60cf9c465b19d9ea825c7e3413293ef14e310c82a4cfe63a9afd5f1addc98be0": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "92ef7c4ce9acb4bcb76d4af6c72b4e70e9c0557651520e34f31dc482640243a9": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "76a4d8eb1fcd35c0080deda98d8309ded7dade4c250a65379777f76a23af64d5": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "2e5928ae4178d692f424052d8f5b05563c2af0adc500bf97de69ba70b126c694": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "b0110dde45c36ca39ffd70c864a8d109cb97eb252f93155e7a7993e30b9fc138": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "eab91c383f5903700225325721d94f4ef2891057f69233f716936ba1e9456f3c": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "27d05296ba5679b3d270139fdafb666daf08f891e88ff2f8e7e7cbe95a4ca950": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "d01a1a847ddb9c12e04dc0c84d0c831c094acc229d99b14cad659cff833e3347": {
+      "role": "layout",
+      "kind": "copy",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    },
+    "4715d348ca7a09c7207e5a17b78ccf12fc6c2aa2d696f91d840d5f6cf39f7c0e": {
+      "role": "layout",
+      "kind": "pack",
+      "config": {
+        "XBLOCK": 1024,
+        "num_stages": 1,
+        "num_warps": 4
+      }
+    }
+  },
+  "phases": {
+    "denoise": [
+      99,
+      99,
+      99,
+      99,
+      99,
+      0,
+      99,
+      0
+    ],
+    "refresh": [
+      99,
+      99,
+      99,
+      99,
+      99,
+      0,
+      99,
+      0
+    ]
+  },
+  "norms": [
+    {
+      "name": "rank_fma_alignment",
+      "rank": 5,
+      "signature": "d942008f19208bf3abd37d4cc884f4ba1937f0fdc7cc08def1cf0bfb3662472b",
+      "function": "triton_red_fused__fused_rms_norm_add_index_select_mul_slice_split_view_16",
+      "config": {
+        "XBLOCK": 1,
+        "R0_BLOCK": 4096,
+        "num_warps": 16,
+        "num_stages": 1
+      },
+      "first_refresh_call_only": false
+    },
+    {
+      "name": "denoise_normalization",
+      "rank": 5,
+      "signature": "d942008f19208bf3abd37d4cc884f4ba1937f0fdc7cc08def1cf0bfb3662472b",
+      "function": "triton_red_fused__fused_rms_norm_add_index_select_mul_slice_split_view_23",
+      "config": {
+        "XBLOCK": 1,
+        "R0_BLOCK": 2048,
+        "num_warps": 16,
+        "num_stages": 1
+      },
+      "first_refresh_call_only": false
+    },
+    {
+      "name": "refresh_normalization",
+      "rank": 5,
+      "signature": "d3c617cddecf8612fe32f853d2d2a5c378738dcf651e3d13a08686ba5f0daec0",
+      "function": "triton_red_fused__fused_rms_norm_add_index_select_mul_slice_split_view_23",
+      "config": {
+        "XBLOCK": 1,
+        "R0_BLOCK": 2048,
+        "num_warps": 16,
+        "num_stages": 1
+      },
+      "first_refresh_call_only": false
+    },
+    {
+      "name": "refresh_prefix_rank0",
+      "rank": 0,
+      "signature": "c94f2c23d741c9615866f0511b172c6cd4ba5273410543cffaf1fc996215fe50",
+      "function": "triton_red_fused__fused_rms_norm_slice_23",
+      "config": {
+        "XBLOCK": 1,
+        "R0_BLOCK": 4096,
+        "num_warps": 16,
+        "num_stages": 1
+      },
+      "first_refresh_call_only": true
+    },
+    {
+      "name": "refresh_prefix_rank1",
+      "rank": 1,
+      "signature": "98d88f139edc4d62a478eec2dc36fed0f764b92b368c15573b2e010e1e516365",
+      "function": "triton_red_fused__fused_rms_norm_slice_23",
+      "config": {
+        "XBLOCK": 1,
+        "R0_BLOCK": 4096,
+        "num_warps": 16,
+        "num_stages": 1
+      },
+      "first_refresh_call_only": true
+    }
+  ]
+}

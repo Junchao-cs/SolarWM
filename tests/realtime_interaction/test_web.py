@@ -1,32 +1,43 @@
 """Exercise deployment configuration and the web API without loading GPU models."""
 
 import json
+import importlib
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
 
-from deploy.solar_wm.solarwm_web.configure import configure
-from deploy.solar_wm.solarwm_web.runtime.configuration import load_config, load_scenes
-from deploy.solar_wm.solarwm_web.runtime.state import State
-from deploy.solar_wm.solarwm_web.server import serve
+from deploy.solar_wm.shared.configuration import load_scenes
+
+
+@pytest.fixture(params=["standard", "memory"])
+def backend_module(request):
+    return importlib.import_module("deploy.solar_wm.backends." + request.param)
 
 
 @pytest.fixture(params=[False, True], ids=["original-only", "with-streamrender"])
-def deployment(request, tmp_path):
+def deployment(request, tmp_path, backend_module):
     weights = tmp_path / "models"
     weights.mkdir()
     for directory in ("SolarWM-h3-33B-base", "SolarWM-h3-33B-sgf-stage2-158f-fix"):
         (weights / directory).mkdir()
     (weights / "h3_silence_153_158_170.safetensors").touch()
+    memory = weights / "SolarWM-h3-33B-memory-stage1-158f"
+    memory.mkdir()
+    for name in ("adapter.pt", "checkpoint-manifest.json", "COMPLETE.json"):
+        (memory / name).touch()
     if request.param:
         (weights / "causal_vit24_step6000.safetensors").touch()
+    configure = importlib.import_module(backend_module.__name__ + ".configure").configure
+    load_config = importlib.import_module(backend_module.__name__ + ".runtime.configuration").load_config
     config = load_config(configure(weights, tmp_path / "deployment"))
     return config, request.param
 
 
-def test_configured_vae_options_and_default_are_served(deployment, tmp_path):
+def test_configured_vae_options_and_default_are_served(deployment, tmp_path, backend_module):
+    State = importlib.import_module(backend_module.__name__ + ".runtime.state").State
+    serve = importlib.import_module(backend_module.__name__ + ".server").serve
     config, has_streamrender = deployment
     scenes = load_scenes(config["scenes"])
     assert list(scenes) == ["snow", "fantasy_world"]
@@ -82,6 +93,23 @@ def test_configured_vae_options_and_default_are_served(deployment, tmp_path):
         assert status["start_pending"]
         assert status["vae_backend"] == expected_default
         assert state.next_command(0)["backend"] == expected_default
+        # Active or queued generation cannot switch decoders. Between sessions,
+        # each advertised decoder can be selected without preparing DiT again.
+        with pytest.raises(RuntimeError, match="busy"):
+            state.request("/start", dict(body, vae_backend="current"))
+        state.update(start_pending=False, active=True)
+        with pytest.raises(RuntimeError, match="busy"):
+            state.request("/start", dict(body, vae_backend="current"))
+        state.request("/stop", {})
+        assert state.next_command(0)["op"] == "stop"
+        state.update(active=False)
+        for selected in expected_ids + [expected_default]:
+            state.request("/start", dict(body, vae_backend=selected))
+            assert state.next_command(0)["backend"] == selected
+            state.update(start_pending=False, active=True)
+            state.request("/stop", {})
+            assert state.next_command(0)["op"] == "stop"
+            state.update(active=False)
     finally:
         for server in servers:
             server.shutdown()

@@ -5,6 +5,8 @@ __pycache__/
 .env.*
 *.local.json
 cache/
+!/backends/memory/acceleration/cache/
+!/backends/memory/acceleration/cache/*.py
 caches/
 outputs/
 logs/
@@ -14,5 +16,5 @@ checkpoints/
 *.cubin
 *.ptx
 # Required fixed calibration assets; override the repository-wide *.pt rule.
-!/solarwm_web/vae/tables/first_window.pt
-!/solarwm_web/vae/tables/steady.pt
+!/shared/vae/tables/first_window.pt
+!/shared/vae/tables/steady.pt
