@@ -86,10 +86,12 @@ class Sink:
         if not self.remote:
             os.makedirs(f"{self.out}/samples", exist_ok=True)
             self.index_path = f"{self.out}/{self.index_name}"
-        elif not os.path.exists(self.index_path):
+        elif (
+            not os.path.exists(self.index_path)
+            and storage.stat(f"{self.out}/{self.index_name}") is not None
+        ):
             # A restarted shard picks up its own index and skips what it already wrote.
-            if storage.stat(f"{self.out}/{self.index_name}") is not None:
-                copy(f"{self.out}/{self.index_name}", self.index_path)
+            copy(f"{self.out}/{self.index_name}", self.index_path)
 
     def member(self, name: str) -> str:
         """Local path to write a member to; ``publish`` moves it where it belongs."""
