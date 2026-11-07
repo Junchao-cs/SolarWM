@@ -1,4 +1,5 @@
 """CPU-only regressions for generated layout scalar provenance."""
+
 import unittest
 
 from deploy.solar_wm.backends.standard.acceleration.operators.build import scalar_arguments
@@ -38,8 +39,10 @@ class LayoutBindingTests(unittest.TestCase):
     def test_symbol_names_are_not_an_abi(self):
         for name in ("s99", "s100", "s0", "arbitrary_prefix"):
             with self.subTest(name=name):
-                self.assertEqual(scalar_arguments(wrapper(name), "helper", "gather"),
-                    ["5566 + L", "L", "712448 + 128 * L", "4987136 + 896 * L"])
+                self.assertEqual(
+                    scalar_arguments(wrapper(name), "helper", "gather"),
+                    ["5566 + L", "L", "712448 + 128 * L", "4987136 + 896 * L"],
+                )
 
     def test_all_lengths_ranks_and_layout_kinds(self):
         # Includes both endpoints, the reported 1140-token failure, and every
@@ -58,8 +61,9 @@ class LayoutBindingTests(unittest.TestCase):
                         scalars = (128 * ((total + 7 - rank) // 8), prefix, count)
                     else:
                         scalars = (prefix, 128 * prefix, count)
-                    self.assertEqual(dimensions(record, rank, (None, None, *scalars)),
-                                     (length, total, count))
+                    self.assertEqual(
+                        dimensions(record, rank, (None, None, *scalars)), (length, total, count)
+                    )
 
     def test_alias_chain(self):
         text = wrapper().replace("s99 = arg83_1", "first = arg83_1\n        s99 = first")
@@ -70,15 +74,19 @@ class LayoutBindingTests(unittest.TestCase):
         self.assertEqual(scalar_arguments(text, "helper", "gather")[1], "L")
 
     def test_nested_function_and_benchmark_are_not_runtime_scope(self):
-        text = wrapper().replace("        with device_guard(0):", """        def nested():
+        text = wrapper().replace(
+            "        with device_guard(0):",
+            """        def nested():
             arg83_1 = 4444
             helper.run(x, y, 1, 2, 3, 4, stream=stream0)
-        with device_guard(0):""")
+        with device_guard(0):""",
+        )
         self.assertEqual(scalar_arguments(text, "helper", "gather")[1], "L")
 
     def test_secondary_pack_abi(self):
-        text = wrapper(kind="pack").replace("x, y, s99, 128 * s99, count",
-            "x, y, s99, 128 * ((5573 + s99) // 8), 128 * s99, count")
+        text = wrapper(kind="pack").replace(
+            "x, y, s99, 128 * s99, count", "x, y, s99, 128 * ((5573 + s99) // 8), 128 * s99, count"
+        )
         self.assertEqual(len(scalar_arguments(text, "helper", "pack")), 4)
 
     def test_invalid_bindings_rejected(self):
@@ -90,24 +98,42 @@ class LayoutBindingTests(unittest.TestCase):
             "overwrite before use": wrapper(extra="s99 = 2123"),
             "unknown keyword": wrapper().replace("stream=stream0", "other=stream0"),
             "wrong arity": wrapper().replace("x, y, total, s99, width, count", "x, y, s99"),
-            "wrong function": wrapper().replace("def call(self, args):", "def unrelated(self, args):"),
-            "wrong unpack": wrapper().replace("x, y, arg83_1, another = args", "x, y, arg83_1, another = unknown"),
-            "boxed reassignment": wrapper().replace("        x, y, arg83_1, another = args", "        args = other_args\n        x, y, arg83_1, another = args"),
-            "duplicate input": wrapper().replace("x, y, arg83_1, another = args", "x, y, arg83_1, arg83_1 = args"),
+            "wrong function": wrapper().replace(
+                "def call(self, args):", "def unrelated(self, args):"
+            ),
+            "wrong unpack": wrapper().replace(
+                "x, y, arg83_1, another = args", "x, y, arg83_1, another = unknown"
+            ),
+            "boxed reassignment": wrapper().replace(
+                "        x, y, arg83_1, another = args",
+                "        args = other_args\n        x, y, arg83_1, another = args",
+            ),
+            "duplicate input": wrapper().replace(
+                "x, y, arg83_1, another = args", "x, y, arg83_1, arg83_1 = args"
+            ),
             "conditional launch": wrapper().replace("with device_guard(0):", "if flag:"),
             "conditional scalar": wrapper(extra="if flag: s99 = another"),
             "mutated scalar": wrapper(extra="s99 += 1"),
             "deleted scalar": wrapper(extra="del s99"),
-            "context alias": wrapper().replace("with device_guard(0):", "with device_guard(0) as s99:"),
-            "different second call": wrapper(tail="helper.run(x, y, total, s99, width + 1, count, stream=stream0)"),
-            "different input second call": wrapper(tail="helper.run(x, y, 5566 + another, another, 712448 + 128 * another, 4987136 + 896 * another, stream=stream0)"),
+            "context alias": wrapper().replace(
+                "with device_guard(0):", "with device_guard(0) as s99:"
+            ),
+            "different second call": wrapper(
+                tail="helper.run(x, y, total, s99, width + 1, count, stream=stream0)"
+            ),
+            "different input second call": wrapper(
+                tail="helper.run(x, y, 5566 + another, another, 712448 + 128 * another, "
+                "4987136 + 896 * another, stream=stream0)"
+            ),
         }
         for label, text in variants.items():
             with self.subTest(label=label), self.assertRaises(ValueError):
                 scalar_arguments(text, "helper", "gather")
 
     def test_runtime_checks_not_relaxed(self):
-        record = dict(kind="gather", scalar_expressions=scalar_arguments(wrapper(), "helper", "gather"))
+        record = dict(
+            kind="gather", scalar_expressions=scalar_arguments(wrapper(), "helper", "gather")
+        )
         prefix = 2148
         args = [None, None, 5566 + prefix, prefix, 712448 + 128 * prefix, 4987136 + 896 * prefix]
         for index in range(2, 6):

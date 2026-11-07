@@ -1,7 +1,7 @@
 """Exercise deployment configuration and the web API without loading GPU models."""
 
-import json
 import importlib
+import json
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -30,7 +30,9 @@ def deployment(request, tmp_path, backend_module):
     if request.param:
         (weights / "causal_vit24_step6000.safetensors").touch()
     configure = importlib.import_module(backend_module.__name__ + ".configure").configure
-    load_config = importlib.import_module(backend_module.__name__ + ".runtime.configuration").load_config
+    load_config = importlib.import_module(
+        backend_module.__name__ + ".runtime.configuration"
+    ).load_config
     config = load_config(configure(weights, tmp_path / "deployment"))
     return config, request.param
 
@@ -103,7 +105,7 @@ def test_configured_vae_options_and_default_are_served(deployment, tmp_path, bac
         state.request("/stop", {})
         assert state.next_command(0)["op"] == "stop"
         state.update(active=False)
-        for selected in expected_ids + [expected_default]:
+        for selected in [*expected_ids, expected_default]:
             state.request("/start", dict(body, vae_backend=selected))
             assert state.next_command(0)["backend"] == selected
             state.update(start_pending=False, active=True)
