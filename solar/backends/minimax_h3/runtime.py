@@ -475,6 +475,19 @@ def _saved_attention_blocks(train_cfg: Mapping[str, Any], stage: str) -> int:
     return int(values.get(stage, configured))
 
 
+def _uncheckpointed_blocks(stage: str) -> int:
+    """``SOLARWM_H3_NO_AC_BLOCKS`` (``<n>`` or ``stage0p5=<n>,...``): student blocks run without
+    activation checkpointing (default 0, upstream)."""
+
+    raw = os.environ.get("SOLARWM_H3_NO_AC_BLOCKS", "").strip()
+    if not raw:
+        return 0
+    if "=" not in raw:
+        return int(raw)
+    values = dict(item.split("=", 1) for item in raw.split(",") if item.strip())
+    return int(values.get(stage, 0))
+
+
 class H3TrainingRuntime:
     """Heavy implementation of the shared :class:`TrainingRuntime` protocol."""
 
@@ -536,6 +549,7 @@ class H3TrainingRuntime:
             activation_checkpointing=bool(self.train_cfg["fsdp"]["activation_checkpointing"]),
             frozen_base_shard_size=self.train_cfg["fsdp"].get("frozen_base_shard_size"),
             saved_attention_blocks=_saved_attention_blocks(self.train_cfg, self.stage),
+            uncheckpointed_blocks=_uncheckpointed_blocks(self.stage),
         )
         self._weights_id = _base_weights_label(self.model_cfg)
         self._initialize_adapter()
