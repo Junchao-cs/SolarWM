@@ -447,6 +447,12 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
             prefix=prefix, rows=rows,
         )
 
+    if _PIECES and control.mode == "replay" and torch.is_grad_enabled():
+        return _pieced_replay_attention(
+            q, k, v, plan=plan, calculate=calculate, condition_rows=condition_rows,
+            prefix=prefix, chunk_rows=chunk_rows,
+        )
+
     outputs = []
     for kind, qstart, qstop, index, qr, kr, prope in plan.segments:
         if kind == "condition":
@@ -492,6 +498,41 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
         outputs.append(calculate(q[:, qstart:qstop], key_rows, value_rows, qr, kr, prope))
         if control.mode == "rollout" and control.commit_cache:
             control.cache.commit(layer, index, k[:, qstart:qstop], v[:, qstart:qstop])
+    return torch.cat(outputs, dim=1)
+
+
+# SOLARWM_H3_SGF_PIECES=1: in the replay with gradients, take every segment's rows from one
+# split of q/k/v into [condition | audio | 20 chunks] instead of slicing the full tensors per
+# segment. Same forward values; in the backward autograd accumulates gradients per piece and
+# concatenates once, instead of materialising a zero-filled full-size gradient per slice
+# (SliceBackward) and adding ~150 of them per layer.
+_PIECES = os.environ.get("SOLARWM_H3_SGF_PIECES", "0") == "1"
+PIECES_COUNTERS = {"replay_layers": 0}
+
+
+def _pieced_replay_attention(q, k, v, *, plan, calculate, condition_rows, prefix, chunk_rows):
+    sizes = [condition_rows, prefix - condition_rows] + [chunk_rows] * 20
+    if sum(sizes) != q.shape[1] or k.shape[1] != q.shape[1]:
+        raise RuntimeError("H3 SGF replay pieces do not tile the document")
+    qp, kp, vp = (tensor.split(sizes, dim=1) for tensor in (q, k, v))
+    outputs = []
+    for kind, qstart, qstop, index, qr, kr, prope in plan.segments:
+        if kind == "condition":
+            outputs.append(calculate(qp[0], kp[0], vp[0], qr, kr, prope))
+            continue
+        if kind == "audio":
+            outputs.append(
+                calculate(qp[1], torch.cat(kp[:2], dim=1), torch.cat(vp[:2], dim=1), qr, kr, prope)
+            )
+            continue
+        first = max(0, index - 5)
+        current = 2 + (10 if qstart >= prefix + 10 * chunk_rows else 0) + index
+        if qstart != prefix + (current - 2) * chunk_rows or qstop - qstart != chunk_rows:
+            raise RuntimeError("H3 SGF replay piece does not match its segment")
+        keys = torch.cat((kp[0], kp[1], *kp[2 + first : 2 + index], kp[current]), dim=1)
+        values = torch.cat((vp[0], vp[1], *vp[2 + first : 2 + index], vp[current]), dim=1)
+        outputs.append(calculate(qp[current], keys, values, qr, kr, prope))
+    PIECES_COUNTERS["replay_layers"] += 1
     return torch.cat(outputs, dim=1)
 
 
