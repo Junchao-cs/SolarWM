@@ -26,9 +26,9 @@ COUNTERS = {"cudnn_forward": 0, "cudnn_backward": 0, "deterministic_backward": 0
 
 
 def cudnn_enabled() -> bool:
-    from .stage_scope import n1_active
+    from .stage_scope import cudnn_active
 
-    return _BACKEND == "cudnn" and n1_active()
+    return _BACKEND == "cudnn" and cudnn_active()
 
 
 def _bhsd(tensor: torch.Tensor) -> torch.Tensor:

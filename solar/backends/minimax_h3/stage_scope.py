@@ -24,4 +24,19 @@ def n1_active() -> bool:
     return _STAGES is None or _CURRENT is None or _CURRENT in _STAGES
 
 
-__all__ = ["n1_active", "set_stage"]
+# SOLARWM_H3_CUDNN_STAGES: stages in which SOLARWM_H3_ATTENTION=cudnn acts (default: every stage).
+# Stage2's student gradient is a difference of two near-identical score evaluations (critic vs teacher)
+# and follows the attention kernel's rounding; outside the listed stages upstream's FA2 runs.
+_RAW_CUDNN = os.environ.get("SOLARWM_H3_CUDNN_STAGES", "").strip()
+_CUDNN_STAGES = (
+    frozenset(s.strip() for s in _RAW_CUDNN.split(",") if s.strip()) if _RAW_CUDNN else None
+)
+
+
+def cudnn_active() -> bool:
+    if not n1_active():
+        return False
+    return _CUDNN_STAGES is None or _CURRENT is None or _CURRENT in _CUDNN_STAGES
+
+
+__all__ = ["cudnn_active", "n1_active", "set_stage"]
