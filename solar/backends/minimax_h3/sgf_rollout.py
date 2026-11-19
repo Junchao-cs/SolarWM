@@ -14,6 +14,10 @@ from .sgf_attention import H3RawKVCache, H3SGFAttention
 from .torch_flow import predict_clean_sample, scale_noise
 from .torch_layout import build_row_timesteps
 
+# SOLARWM_H3_DEFER_FINITE=1: the per-denoise finiteness guard of the rollout is
+# evaluated once after the rollout instead of syncing the host 40 times.
+_DEFER_FINITE_CHECK = __import__("os").environ.get("SOLARWM_H3_DEFER_FINITE", "0") == "1"
+
 
 @dataclass
 class H3SGFInputs:
@@ -168,6 +172,7 @@ def h3_sgf_rollout(
         raise ValueError("H3 SGF exit index must lie in [0,4)")
     cache = H3RawKVCache()
     committed, noisy_exits = [], []
+    finite_flags = []
     try:
         with torch.no_grad():
             for window in windows:
@@ -190,7 +195,11 @@ def h3_sgf_rollout(
                         chunk_index=window.chunk_index,
                         cache=cache,
                     )
-                    if not bool(torch.isfinite(x0).all()):
+                    if _DEFER_FINITE_CHECK:
+                        # Accumulate on the GPU; raise once after the rollout (no
+                        # host sync per denoiser evaluation).
+                        finite_flags.append(torch.isfinite(x0).all())
+                    elif not bool(torch.isfinite(x0).all()):
                         raise FloatingPointError(
                             f"non-finite H3 SGF chunk={window.chunk_index}, denoise={step_index}"
                         )
@@ -214,6 +223,11 @@ def h3_sgf_rollout(
                 )
                 if progress is not None:
                     progress(window.chunk_index + 1)
+        if finite_flags and not bool(torch.stack(finite_flags).all()):
+            bad = int((~torch.stack(finite_flags)).nonzero()[0, 0])
+            raise FloatingPointError(
+                f"non-finite H3 SGF chunk={bad // 4}, denoise={bad % 4}"
+            )
         return H3SGFRollout(
             torch.cat(committed, dim=2),
             torch.cat(noisy_exits, dim=2),
