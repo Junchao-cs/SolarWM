@@ -24,7 +24,9 @@ COUNTERS = {"fused": 0, "fused_backward": 0}
 
 
 def prope_fused_enabled() -> bool:
-    return _ENABLED
+    from .stage_scope import n1_active
+
+    return _ENABLED and n1_active()
 
 
 @triton.jit

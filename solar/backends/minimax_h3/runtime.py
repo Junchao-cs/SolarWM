@@ -505,6 +505,9 @@ class H3TrainingRuntime:
         self.model_cfg = config["model"]
         self.train_cfg = config["train"]
         self.stage = str(self.train_cfg["stage"])
+        from .stage_scope import set_stage
+
+        set_stage(self.stage)
         self.extra_roles: dict[str, Any] = {}
         self.student_step = 0
         self.checkpoint_cfg = config["checkpoint"]

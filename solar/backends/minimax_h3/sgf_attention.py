@@ -120,7 +120,9 @@ KV_WINDOW_COUNTERS = {"built": 0, "reused": 0}
 
 
 def sgf_prefix_reuse_enabled() -> bool:
-    return _PREFIX_REUSE and _PLAN_ENABLED
+    from .stage_scope import n1_active
+
+    return _PREFIX_REUSE and _PLAN_ENABLED and n1_active()
 
 
 def prepare_sgf_rotaries(control: H3SGFAttention, rope):
@@ -386,6 +388,12 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool
     return tuple(segments)
 
 
+def _n1() -> bool:
+    from .stage_scope import n1_active
+
+    return n1_active()
+
+
 def _fused() -> bool:
     from .fused_prope import prope_fused_enabled
 
@@ -451,7 +459,7 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
             prefix=prefix, rows=rows,
         )
 
-    if _PIECES and control.mode == "replay" and torch.is_grad_enabled():
+    if _PIECES and control.mode == "replay" and torch.is_grad_enabled() and _n1():
         return _pieced_replay_attention(
             q, k, v, plan=plan, calculate=calculate, condition_rows=condition_rows,
             prefix=prefix, chunk_rows=chunk_rows,

@@ -88,8 +88,25 @@ def _fused_block_forward(
 
 
 _FUSED = __import__("os").environ.get("SOLARWM_H3_FUSED", "0") == "1"
+_ORIGINAL_BLOCK_FORWARD = MiniMaxH3TransformerBlock.forward
+
+
+def _scoped_block_forward(self, *args, **kwargs):
+    from .stage_scope import n1_active
+
+    if n1_active():
+        return _fused_block_forward(self, *args, **kwargs)
+    return _ORIGINAL_BLOCK_FORWARD(self, *args, **kwargs)
+
+
+def _fused_active() -> bool:
+    from .stage_scope import n1_active
+
+    return _FUSED and n1_active()
+
+
 if _FUSED:
-    MiniMaxH3TransformerBlock.forward = _fused_block_forward
+    MiniMaxH3TransformerBlock.forward = _scoped_block_forward
 if __import__("os").environ.get("SOLARWM_H3_SWIGLU_FUSED", "0") == "1":
     from . import fused_ops as _fused_ops  # noqa: F401  (patches diffusers SwiGLU.forward)
 
@@ -555,7 +572,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         key = key.unflatten(-1, (attn.heads, -1))
         value = value.unflatten(-1, (attn.heads, -1))
         if sgf_attention is not None:
-            if _FUSED:
+            if _fused_active():
                 from .fused_ops import qk_norm
 
                 query = qk_norm(attn.norm_q, query)
@@ -566,7 +583,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             return cls._sgf_attention_forward(attn, query, key, value, sgf_attention)
 
         # H3 native MM-RoPE first, then token-selective camera PRoPE.
-        if _FUSED:
+        if _fused_active():
             from .fused_ops import qk_norm_rope
 
             query = qk_norm_rope(attn.norm_q, query, *rotary_emb)
