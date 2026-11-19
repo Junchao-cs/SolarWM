@@ -284,6 +284,43 @@ _A2A_FAST = __import__("os").environ.get("SOLARWM_H3_A2A_FAST", "0") == "1"
 A2A_COUNTERS = {"fast": 0, "reference": 0}
 
 
+_A2A_COPY = __import__("os").environ.get("SOLARWM_H3_A2A_COPY", "0") == "1"
+_COPY_KERNEL = None
+
+
+def _block_transpose(src: Any, outer: int, inner: int, width: int) -> Any:
+    """``src`` viewed as ``[outer, inner, width]`` -> contiguous ``[inner, outer, width]`` (a copy).
+
+    SOLARWM_H3_A2A_COPY=1: one Triton kernel moving contiguous ``width``-element rows (the
+    SP exchange's head blocks, 3.5-7 KB) with wide loads/stores instead of torch's generic
+    strided copy. Pure data movement (bitwise)."""
+    import torch
+
+    global _COPY_KERNEL
+    if _COPY_KERNEL is None:
+        import triton
+        import triton.language as tl
+
+        @triton.jit
+        def _kernel(SRC, DST, outer, inner, width, BLOCK: tl.constexpr):
+            row = tl.program_id(0)  # source row index in [outer * inner)
+            o = row // inner
+            i = row % inner
+            cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+            mask = cols < width
+            value = tl.load(SRC + row.to(tl.int64) * width + cols, mask=mask)
+            dst_row = i.to(tl.int64) * outer + o
+            tl.store(DST + dst_row * width + cols, value, mask=mask)
+
+        _COPY_KERNEL = (_kernel, triton)
+    kernel, triton = _COPY_KERNEL
+    src = src.contiguous()
+    out = torch.empty((inner, outer, width), device=src.device, dtype=src.dtype)
+    block = 1024
+    kernel[(outer * inner, triton.cdiv(width, block))](src, out, outer, inner, width, BLOCK=block)
+    return out
+
+
 def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], current: Any) -> Any:
     """``_all_to_all_raw`` for batch 1 with one packing copy per exchange (SOLARWM_H3_A2A_FAST=1).
 
@@ -303,11 +340,16 @@ def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], cu
             raise RuntimeError("local sequence length differs from registered SP layout")
         local_heads = heads // world
         # [S_loc, world, H/world, D] -> rank-major send rows [world * S_loc, H/world, D].
-        send = (
-            input_.reshape(local_sequence, world, local_heads, head_dim)
-            .transpose(0, 1)
-            .reshape(world * local_sequence, local_heads, head_dim)
-        )
+        if _A2A_COPY and input_.is_contiguous():
+            send = _block_transpose(
+                input_, local_sequence, world, local_heads * head_dim
+            ).reshape(world * local_sequence, local_heads, head_dim)
+        else:
+            send = (
+                input_.reshape(local_sequence, world, local_heads, head_dim)
+                .transpose(0, 1)
+                .reshape(world * local_sequence, local_heads, head_dim)
+            )
         output = torch.empty(
             (sum(lengths), local_heads, head_dim), dtype=input_.dtype, device=input_.device
         )
@@ -336,6 +378,10 @@ def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], cu
         input_split_sizes=list(lengths),
         group=current.sp_group,
     )
+    if _A2A_COPY:
+        return _block_transpose(
+            received, world, local_sequence, local_heads * head_dim
+        ).reshape(1, local_sequence, world * local_heads, head_dim)
     return (
         received.reshape(world, local_sequence, local_heads, head_dim)
         .transpose(0, 1)
