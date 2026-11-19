@@ -280,6 +280,69 @@ def sequence_all_gather(input_: Any, dim: int = 1) -> Any:
     return _all_gather_apply(input_, dim)
 
 
+_A2A_FAST = __import__("os").environ.get("SOLARWM_H3_A2A_FAST", "0") == "1"
+A2A_COUNTERS = {"fast": 0, "reference": 0}
+
+
+def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], current: Any) -> Any:
+    """``_all_to_all_raw`` for batch 1 with one packing copy per exchange (SOLARWM_H3_A2A_FAST=1).
+
+    The SP shards are contiguous row ranges in rank order, so the gathered sequence is the
+    concatenation of the received blocks: heads->sequence receives straight into the
+    ``[S, H/world, D]`` result, sequence->heads sends contiguous row blocks as they are.
+    Same values and layout as the reference exchange (pure data movement)."""
+    import torch
+    import torch.distributed as dist
+
+    world = current.sp_size
+    if scatter_dim == 2:
+        _batch, local_sequence, heads, head_dim = input_.shape
+        if heads % world:
+            raise RuntimeError("attention heads must be divisible by SP size")
+        if local_sequence != lengths[current.sp_rank]:
+            raise RuntimeError("local sequence length differs from registered SP layout")
+        local_heads = heads // world
+        # [S_loc, world, H/world, D] -> rank-major send rows [world * S_loc, H/world, D].
+        send = (
+            input_.reshape(local_sequence, world, local_heads, head_dim)
+            .transpose(0, 1)
+            .reshape(world * local_sequence, local_heads, head_dim)
+        )
+        output = torch.empty(
+            (sum(lengths), local_heads, head_dim), dtype=input_.dtype, device=input_.device
+        )
+        dist.all_to_all_single(
+            output,
+            send,
+            output_split_sizes=list(lengths),
+            input_split_sizes=[local_sequence] * world,
+            group=current.sp_group,
+        )
+        return output.unsqueeze(0)
+    _batch, sequence, local_heads, head_dim = input_.shape
+    if sequence != sum(lengths):
+        raise RuntimeError("full sequence length differs from registered SP layout")
+    local_sequence = lengths[current.sp_rank]
+    send = input_.reshape(sequence, local_heads, head_dim)
+    if not send.is_contiguous():
+        send = send.contiguous()
+    received = torch.empty(
+        (world * local_sequence, local_heads, head_dim), dtype=input_.dtype, device=input_.device
+    )
+    dist.all_to_all_single(
+        received,
+        send,
+        output_split_sizes=[local_sequence] * world,
+        input_split_sizes=list(lengths),
+        group=current.sp_group,
+    )
+    return (
+        received.reshape(world, local_sequence, local_heads, head_dim)
+        .transpose(0, 1)
+        .reshape(1, local_sequence, world * local_heads, head_dim)
+    )
+
+
 def _all_to_all_raw(input_: Any, scatter_dim: int, gather_dim: int) -> Any:
     import torch
     import torch.distributed as dist
@@ -293,6 +356,11 @@ def _all_to_all_raw(input_: Any, scatter_dim: int, gather_dim: int) -> Any:
     lengths = current.sequence_lengths
     if len(lengths) != world:
         raise RuntimeError("SP sequence lengths were not registered")
+
+    if _A2A_FAST and input_.shape[0] == 1 and (scatter_dim, gather_dim) in {(2, 1), (1, 2)}:
+        A2A_COUNTERS["fast"] += 1
+        return _all_to_all_fast(input_, scatter_dim, tuple(lengths), current)
+    A2A_COUNTERS["reference"] += 1
 
     if scatter_dim == 2 and gather_dim == 1:
         batch, local_sequence, heads, head_dim = input_.shape
