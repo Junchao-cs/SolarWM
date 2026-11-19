@@ -339,4 +339,24 @@ def qk_norm_rope(norm: torch.nn.Module, x: torch.Tensor, cos: torch.Tensor, sin:
     return _QKNormRope.apply(x, weight, cos.contiguous(), sin.contiguous(), eps_value)
 
 
-__all__ = ["COUNTERS", "fused_enabled", "gated_residual", "qk_norm_rope", "rmsnorm_modulate"]
+def qk_norm(norm: torch.nn.Module, x: torch.Tensor):
+    """``norm(x)`` (q/k RMSNorm over head_dim 128) with the fused kernel and no rotary
+    channels (the SGF path rotates after its all-to-all, per attention segment)."""
+
+    weight = norm.weight
+    eps = norm.eps if norm.eps is not None else torch.finfo(x.dtype).eps
+    if (
+        not _usable(x, weight)
+        or weight.requires_grad
+        or x.ndim != 4
+        or x.shape[0] != 1
+        or x.shape[-1] != 128
+    ):
+        COUNTERS["fallback"] += 1
+        return norm(x)
+    eps_value = float(torch.tensor(eps, dtype=x.dtype).item())
+    empty = torch.zeros((x.shape[1], 0), device=x.device, dtype=torch.float32)
+    return _QKNormRope.apply(x, weight, empty, empty, eps_value)
+
+
+__all__ = ["COUNTERS", "fused_enabled", "gated_residual", "qk_norm", "qk_norm_rope", "rmsnorm_modulate"]

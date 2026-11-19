@@ -553,8 +553,14 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         key = key.unflatten(-1, (attn.heads, -1))
         value = value.unflatten(-1, (attn.heads, -1))
         if sgf_attention is not None:
-            query = attn.norm_q(query)
-            key = attn.norm_k(key)
+            if _FUSED:
+                from .fused_ops import qk_norm
+
+                query = qk_norm(attn.norm_q, query)
+                key = qk_norm(attn.norm_k, key)
+            else:
+                query = attn.norm_q(query)
+                key = attn.norm_k(key)
             return cls._sgf_attention_forward(attn, query, key, value, sgf_attention)
 
         # H3 native MM-RoPE first, then token-selective camera PRoPE.
