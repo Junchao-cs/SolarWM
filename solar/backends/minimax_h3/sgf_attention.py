@@ -79,6 +79,33 @@ class H3SGFAttention:
     # Layer-independent camera/rotary tensors of this forward (SOLARWM_H3_SGF_PLAN=1),
     # built by the first layer and reused by the other 49 (and by recomputation).
     plan: Any = None
+    # Rollout prefix reuse (SOLARWM_H3_SGF_PREFIX_REUSE=1): H3SGFPrefixKV of the rollout.
+    prefix_kv: Any = None
+
+
+class H3SGFPrefixKV:
+    """Per-rollout raw keys/values of the prefix rows (text, anchor, audio) per layer.
+
+    In a rollout document the prefix rows attend only to prefix rows, with fixed
+    rotary positions, cameras and time conditioning, so their raw (pre-rotary) keys
+    and values are the same in every denoising and commit evaluation of the rollout.
+    The first evaluation keeps them ('capture'); every later one runs the current
+    chunk's rows only ('suffix') and reads them. A plain object: passed by reference.
+    """
+
+    __slots__ = ("layers", "mode")
+
+    def __init__(self) -> None:
+        self.layers: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+        self.mode = "capture"
+
+
+_PREFIX_REUSE = os.environ.get("SOLARWM_H3_SGF_PREFIX_REUSE", "0") == "1"
+PREFIX_REUSE_COUNTERS = {"captured_layers": 0, "suffix_layers": 0}
+
+
+def sgf_prefix_reuse_enabled() -> bool:
+    return _PREFIX_REUSE and _PLAN_ENABLED
 
 
 def prepare_sgf_rotaries(control: H3SGFAttention, rope):
@@ -127,7 +154,9 @@ def sgf_attention(q, k, v, *, control: H3SGFAttention, layer: int, apply_rotary,
     rows = int(layout.rows_per_video_frame)
     chunk_rows = 5 * rows
     expected_video = 100 if control.mode == "replay" else 5
-    if q.shape[1] != prefix + expected_video * rows:
+    suffix = control.prefix_kv is not None and control.prefix_kv.mode == "suffix"
+    expected_rows = expected_video * rows + (0 if suffix else prefix)
+    if q.shape[1] != expected_rows:
         raise ValueError("H3 SGF packed query shape differs from its rollout/replay layout")
     if control.prefix_rotary is None:
         raise ValueError("H3 SGF rotaries must be prepared before attention")
@@ -237,12 +266,16 @@ def sgf_attention(q, k, v, *, control: H3SGFAttention, layer: int, apply_rotary,
     return torch.cat(outputs, dim=1)
 
 
-def _segment_specs(control: H3SGFAttention, rows: int, prefix: int, condition_rows: int):
+def _segment_specs(
+    control: H3SGFAttention, rows: int, prefix: int, condition_rows: int, suffix: bool = False
+):
     """Query/key row ranges of every attention segment, in the order of ``sgf_attention``."""
     chunk_rows = 5 * rows
-    specs = [("condition", 0, condition_rows, None)]
-    if prefix > condition_rows:
-        specs.append(("audio", condition_rows, prefix, None))
+    specs = []
+    if not suffix:
+        specs.append(("condition", 0, condition_rows, None))
+        if prefix > condition_rows:
+            specs.append(("audio", condition_rows, prefix, None))
     chunk_specs = (
         [(False, i) for i in range(10)] + [(True, i) for i in range(10)]
         if control.mode == "replay"
@@ -252,12 +285,12 @@ def _segment_specs(control: H3SGFAttention, rows: int, prefix: int, condition_ro
         if control.mode == "replay":
             qstart = prefix + (50 * rows if noisy else 0) + index * chunk_rows
         else:
-            qstart = prefix
+            qstart = 0 if suffix else prefix
         specs.append(("chunk", qstart, qstart + chunk_rows, index))
     return specs
 
 
-def _build_plan(control: H3SGFAttention, dtype, device, batch: int):
+def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool = False):
     """Exactly the camera/rotary tensors ``sgf_attention`` computes per layer, once."""
     layout = control.layout
     condition_rows = int(layout.condition_indices.numel())
@@ -291,7 +324,9 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int):
         return tuple(value.to(dtype) for value in rotary)
 
     segments = []
-    for kind, qstart, qstop, index in _segment_specs(control, rows, prefix, condition_rows):
+    for kind, qstart, qstop, index in _segment_specs(
+        control, rows, prefix, condition_rows, suffix=suffix
+    ):
         if kind == "condition":
             rot = _slice_rotary(control.prefix_rotary, 0, condition_rows)
             cam = (prefix_view[:, :condition_rows], prefix_K[:, :condition_rows])
@@ -347,9 +382,13 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
     rows = int(layout.rows_per_video_frame)
     chunk_rows = 5 * rows
     plan = control.plan
+    prefix_kv = control.prefix_kv
+    suffix = prefix_kv is not None and prefix_kv.mode == "suffix"
+    if prefix_kv is not None and (control.mode != "rollout" or torch.is_grad_enabled()):
+        raise RuntimeError("H3 SGF prefix reuse is for detached rollout evaluations only")
     key = (q.dtype, q.device, int(q.shape[0]))
     if plan.segments is None:
-        plan.segments = _build_plan(control, q.dtype, q.device, int(q.shape[0]))
+        plan.segments = _build_plan(control, q.dtype, q.device, int(q.shape[0]), suffix=suffix)
         plan.key = key
         PLAN_COUNTERS["built"] += 1
     else:
@@ -401,8 +440,16 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
             history_values = (
                 torch.cat([entry[2] for entry in history], dim=1) if history else v[:, :0]
             )
-        key_rows = torch.cat((k[:, :prefix], history_keys, k[:, qstart:qstop]), dim=1)
-        value_rows = torch.cat((v[:, :prefix], history_values, v[:, qstart:qstop]), dim=1)
+        if suffix:
+            prefix_keys, prefix_values = prefix_kv.layers[layer]
+            PREFIX_REUSE_COUNTERS["suffix_layers"] += 1
+        else:
+            prefix_keys, prefix_values = k[:, :prefix], v[:, :prefix]
+            if prefix_kv is not None:
+                prefix_kv.layers[layer] = (prefix_keys.clone(), prefix_values.clone())
+                PREFIX_REUSE_COUNTERS["captured_layers"] += 1
+        key_rows = torch.cat((prefix_keys, history_keys, k[:, qstart:qstop]), dim=1)
+        value_rows = torch.cat((prefix_values, history_values, v[:, qstart:qstop]), dim=1)
         outputs.append(calculate(q[:, qstart:qstop], key_rows, value_rows, qr, kr, prope))
         if control.mode == "rollout" and control.commit_cache:
             control.cache.commit(layer, index, k[:, qstart:qstop], v[:, qstart:qstop])

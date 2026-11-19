@@ -742,11 +742,16 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             if isinstance(attention_mask, _w6.H3W6Run) and attention_mask.mode == "suffix"
             else None
         )
+        sgf_prefix = getattr(sgf_attention, "prefix_kv", None) if sgf_attention is not None else None
+        if sgf_prefix is not None and sgf_prefix.mode == "suffix":
+            suffix_run = sgf_prefix
+            if int(hidden_states.shape[1]) != sequence_length:
+                raise ValueError("H3 SGF suffix evaluation expects exactly the chunk rows")
+        elif suffix_run is not None and int(hidden_states.shape[1]) != suffix_run.suffix.suffix_rows:
+            raise ValueError("H3 W6 suffix evaluation expects exactly the noisy rows")
         if suffix_run is not None:
             # Noisy rows only: every input of the kept prefix is already reflected in
             # the cached keys/values, and no prefix row's output is read.
-            if int(hidden_states.shape[1]) != suffix_run.suffix.suffix_rows:
-                raise ValueError("H3 W6 suffix evaluation expects exactly the noisy rows")
             video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
             packed = video_embeds.to(get_parameter_dtype(self.context_embedder))
         else:
