@@ -355,8 +355,42 @@ def qk_norm(norm: torch.nn.Module, x: torch.Tensor):
         COUNTERS["fallback"] += 1
         return norm(x)
     eps_value = float(torch.tensor(eps, dtype=x.dtype).item())
-    empty = torch.zeros((x.shape[1], 0), device=x.device, dtype=torch.float32)
-    return _QKNormRope.apply(x, weight, empty, empty, eps_value)
+    return _QKNorm.apply(x, weight, eps_value)
+
+
+class _QKNorm(torch.autograd.Function):
+    """The q/k norm kernels with zero rotary channels (R = 0: every cos/sin load is masked
+    off, so ``x`` itself stands in as the never-read table pointer)."""
+
+    @staticmethod
+    def forward(ctx, x, weight, eps):
+        b, s, h, d = x.shape
+        xc = x.contiguous()
+        out = torch.empty_like(xc)
+        n_vec = b * s * h
+        rstd = torch.empty(n_vec, device=x.device, dtype=torch.float32)
+        vb = 16
+        _qk_norm_rope_fwd[(triton.cdiv(n_vec, vb),)](
+            xc, weight, xc, xc, out, rstd, n_vec, h, _inv(d), eps,
+            D=d, R=0, HALF=0, VB=vb, num_warps=4,
+        )
+        ctx.save_for_backward(xc, weight, rstd)
+        COUNTERS["qk_norm"] = COUNTERS.get("qk_norm", 0) + 1
+        return out
+
+    @staticmethod
+    def backward(ctx, grad):
+        xc, weight, rstd = ctx.saved_tensors
+        b, s, h, d = xc.shape
+        g = grad.contiguous()
+        dx = torch.empty_like(xc)
+        n_vec = b * s * h
+        vb = 16
+        _qk_norm_rope_bwd[(triton.cdiv(n_vec, vb),)](
+            g, xc, weight, xc, xc, rstd, dx, n_vec, h, _inv(d),
+            D=d, R=0, HALF=0, VB=vb, num_warps=4,
+        )
+        return dx, None, None
 
 
 __all__ = ["COUNTERS", "fused_enabled", "gated_residual", "qk_norm", "qk_norm_rope", "rmsnorm_modulate"]
