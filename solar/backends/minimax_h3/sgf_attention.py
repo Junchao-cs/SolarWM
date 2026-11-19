@@ -93,15 +93,26 @@ class H3SGFPrefixKV:
     chunk's rows only ('suffix') and reads them. A plain object: passed by reference.
     """
 
-    __slots__ = ("layers", "mode")
+    __slots__ = ("layers", "mode", "window")
 
     def __init__(self) -> None:
         self.layers: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
         self.mode = "capture"
+        # SOLARWM_H3_SGF_KV_WINDOW=1: per layer (chunk index, keys, values, prepared rows) of
+        # the current window's attention keys/values after MM-RoPE and camera PRoPE.
+        self.window: dict[int, list] = {}
 
 
 _PREFIX_REUSE = os.environ.get("SOLARWM_H3_SGF_PREFIX_REUSE", "0") == "1"
 PREFIX_REUSE_COUNTERS = {"captured_layers": 0, "suffix_layers": 0}
+
+# SOLARWM_H3_SGF_KV_WINDOW=1 (with SGF_PLAN and SGF_PREFIX_REUSE): in a detached rollout the
+# prefix and history rows of a chunk's attention window get the same rotary positions and
+# camera transforms in all five evaluations of that chunk (four denoising steps and the
+# commit). Their transformed keys/values are built once per chunk and layer into a
+# per-layer buffer; each evaluation transforms and writes only the current chunk's rows.
+_KV_WINDOW = os.environ.get("SOLARWM_H3_SGF_KV_WINDOW", "0") == "1"
+KV_WINDOW_COUNTERS = {"built": 0, "reused": 0}
 
 
 def sgf_prefix_reuse_enabled() -> bool:
@@ -408,6 +419,12 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
         output = attend(query.transpose(1, 2), key_.transpose(1, 2), value.transpose(1, 2))
         return _suffix(output.transpose(1, 2), apply_output).transpose(1, 2)
 
+    if suffix and _KV_WINDOW and control.mode == "rollout" and len(plan.segments) == 1:
+        return _windowed_rollout_attention(
+            q, k, v, control=control, layer=layer, apply_rotary=apply_rotary, attend=attend,
+            prefix=prefix, rows=rows,
+        )
+
     outputs = []
     for kind, qstart, qstop, index, qr, kr, prope in plan.segments:
         if kind == "condition":
@@ -454,3 +471,74 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
         if control.mode == "rollout" and control.commit_cache:
             control.cache.commit(layer, index, k[:, qstart:qstop], v[:, qstart:qstop])
     return torch.cat(outputs, dim=1)
+
+
+def _rows_of(transform, start: int, stop: int):
+    """A ``_project`` partial restricted to the camera matrices of rows ``[start, stop)``."""
+    from functools import partial
+
+    return partial(transform.func, matrix=transform.keywords["matrix"][:, start:stop])
+
+
+def _suffix_into(features, transform, out):
+    """``out.copy_(_suffix(features, transform))``."""
+    out.copy_(_suffix(features, transform))
+
+
+def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend, prefix, rows):
+    """Suffix rollout evaluation of one chunk against its prepared attention window.
+
+    Same operations as the planned path's chunk segment, split by key rows: the prefix and
+    history rows of the window (identical in every evaluation of the chunk) are transformed
+    once per chunk and layer into a per-layer buffer; the current chunk's rows are
+    transformed and written into the buffer's tail on every evaluation.
+    """
+    plan = control.plan
+    prefix_kv = control.prefix_kv
+    ((_kind, qstart, qstop, index, qr, kr, prope),) = plan.segments
+    apply_q, apply_kv, apply_output = prope
+    chunk_rows = 5 * rows
+    if (qstart, qstop) != (0, chunk_rows) or q.shape[1] != chunk_rows:
+        raise RuntimeError("H3 SGF KV window expects exactly one chunk of query rows")
+    total = int(kr[0].shape[0])
+    kept = total - chunk_rows
+    entry = prefix_kv.window.get(layer)
+    if entry is None or entry[0] != index:
+        if control.cache is None:
+            raise ValueError("H3 rollout requires an explicit raw KV cache")
+        history = control.cache.history(layer, index)
+        prefix_keys, prefix_values = prefix_kv.layers[layer]
+        if prefix_keys.shape[1] != prefix or kept != prefix + len(history) * chunk_rows:
+            raise RuntimeError("H3 SGF KV window does not match the chunk's key layout")
+        maximum = prefix + 6 * chunk_rows
+        if entry is None:
+            shape = (k.shape[0], maximum, k.shape[2], k.shape[3])
+            keys = torch.empty(shape, device=k.device, dtype=k.dtype)
+            values = torch.empty(shape, device=v.device, dtype=v.dtype)
+        else:
+            keys, values = entry[1], entry[2]
+        raw_keys = torch.cat((prefix_keys, *(item[1] for item in history)), dim=1)
+        raw_values = torch.cat((prefix_values, *(item[2] for item in history)), dim=1)
+        kept_kv = _rows_of(apply_kv, 0, kept)
+        rotated = apply_rotary(raw_keys, kr[0][:kept], kr[1][:kept])
+        _suffix_into(rotated.transpose(1, 2), kept_kv, keys[:, :kept].transpose(1, 2))
+        del rotated
+        _suffix_into(raw_values.transpose(1, 2), kept_kv, values[:, :kept].transpose(1, 2))
+        del raw_keys, raw_values
+        entry = [index, keys, values]
+        prefix_kv.window[layer] = entry
+        KV_WINDOW_COUNTERS["built"] += 1
+    else:
+        KV_WINDOW_COUNTERS["reused"] += 1
+    keys, values = entry[1], entry[2]
+    PREFIX_REUSE_COUNTERS["suffix_layers"] += 1
+    chunk_kv = _rows_of(apply_kv, kept, total)
+    rotated = apply_rotary(k, kr[0][kept:], kr[1][kept:])
+    _suffix_into(rotated.transpose(1, 2), chunk_kv, keys[:, kept:total].transpose(1, 2))
+    query = _suffix(apply_rotary(q, *qr).transpose(1, 2), apply_q).transpose(1, 2)
+    _suffix_into(v.transpose(1, 2), chunk_kv, values[:, kept:total].transpose(1, 2))
+    output = attend(query, keys[:, :total], values[:, :total])
+    output = _suffix(output.transpose(1, 2), apply_output).transpose(1, 2)
+    if control.commit_cache:
+        control.cache.commit(layer, index, k, v)
+    return output
