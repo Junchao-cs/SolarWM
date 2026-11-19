@@ -55,6 +55,7 @@ from .distributed import (
     state as get_sequence_parallel_state,
 )
 from . import fast_attention as _fast_attention
+from . import w6_attention as _w6
 from .segmented_attention import H3SegmentPlan, segment_attention
 
 get_parameter_dtype = patch_minimax_h3_parameter_dtype()
@@ -501,6 +502,8 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
 
         if isinstance(attention_mask, H3SegmentPlan):
             attended = segment_attention(query, key, value, attention_mask, attn.h3_layer_index)
+        elif isinstance(attention_mask, _w6.H3W6Plan):
+            attended = _w6.w6_attention(query, key, value, attention_mask)
         elif _is_flex_block_mask(attention_mask):
             expected_shape = (int(query.shape[1]), int(key.shape[1]))
             if tuple(attention_mask.seq_lengths) != expected_shape:
@@ -671,7 +674,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         rotary_emb = self.rope(position_ids)
         needs_control = (
             _is_flex_block_mask(attention_mask)
-            or isinstance(attention_mask, H3SegmentPlan)
+            or isinstance(attention_mask, (H3SegmentPlan, _w6.H3W6Plan))
             or fused_prope is not None
             or cam_viewmats is not None
             or cam_K is not None

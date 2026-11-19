@@ -13,6 +13,7 @@ from .layout import build_stage1_layout, patchify_video
 from .stage0p5 import H3Stage0p5Core
 from .torch_layout import build_stage1_row_time_pairs
 from .torch_mask import build_stage1_w6_block_mask
+from .w6_attention import build_w6_plan, segments_enabled
 
 
 class H3Stage1Core(H3Stage0p5Core):
@@ -113,12 +114,15 @@ class H3Stage1Core(H3Stage0p5Core):
         clean_rows, noise_rows = patchify_video(clean), patchify_video(noise)
         key = (layout.sequence_length, layout.rows_per_video_frame, layout.window_chunks)
         if key not in self._masks:
-            self._masks[key] = build_stage1_w6_block_mask(
-                layout,
-                batch_size=1,
-                num_heads=None,
-                device=self.device,
-            )
+            if segments_enabled():
+                self._masks[key] = build_w6_plan(layout)
+            else:
+                self._masks[key] = build_stage1_w6_block_mask(
+                    layout,
+                    batch_size=1,
+                    num_heads=None,
+                    device=self.device,
+                )
             while len(self._masks) > 4:
                 self._masks.popitem(last=False)
         self._masks.move_to_end(key)

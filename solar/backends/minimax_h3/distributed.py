@@ -590,7 +590,7 @@ def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) ->
 
     if attention_mask is None:
         return
-    if isinstance(attention_mask, H3SegmentPlan):
+    if isinstance(attention_mask, H3SegmentPlan) or type(attention_mask).__name__ == "H3W6Plan":
         if int(attention_mask.sequence_length) != int(total_tokens):
             raise ValueError("H3 packed SP segment plan must cover the complete global sequence")
         return
