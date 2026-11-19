@@ -394,3 +394,89 @@ class _QKNorm(torch.autograd.Function):
 
 
 __all__ = ["COUNTERS", "fused_enabled", "gated_residual", "qk_norm", "qk_norm_rope", "rmsnorm_modulate"]
+
+
+# ----------------------------------------------------------------------------------- SwiGLU
+#
+# diffusers ``SwiGLU``: ``h, g = proj(x).chunk(2, -1); return h * silu(g)``. One kernel reads the
+# projection output once and writes the product (eager: silu pass, mul pass, plus the chunk's cat
+# in backward). Same arithmetic as torch's kernels: silu(g) = g / (1 + exp(-g)) in FP32 with the
+# accurate exp and IEEE division, rounded to BF16, then the BF16 product; backward d_h = bf16(dy*s),
+# d_s = bf16(dy*h), d_g = bf16(d_s * sig * (1 + g * (1 - sig))) written into one [M, 2N] buffer.
+# Switch ``SOLARWM_H3_SWIGLU_FUSED=1``.
+
+from triton.language.extra.cuda import libdevice as _libdevice  # noqa: E402
+
+_SWIGLU = os.environ.get("SOLARWM_H3_SWIGLU_FUSED", "0") == "1"
+
+
+@triton.jit
+def _swiglu_fwd(H, OUT, M, N, BLOCK: tl.constexpr):
+    row = tl.program_id(0)
+    cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    mask = cols < N
+    h = tl.load(H + row * 2 * N + cols, mask=mask, other=0.0).to(tl.float32)
+    g = tl.load(H + row * 2 * N + N + cols, mask=mask, other=0.0).to(tl.float32)
+    s = _bf16(_libdevice.div_rn(g, 1.0 + _libdevice.exp(-g)))
+    tl.store(OUT + row * N + cols, (h * s).to(tl.bfloat16), mask=mask)
+
+
+@triton.jit
+def _swiglu_bwd(DY, H, DH, M, N, BLOCK: tl.constexpr):
+    row = tl.program_id(0)
+    cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    mask = cols < N
+    dy = tl.load(DY + row * N + cols, mask=mask, other=0.0).to(tl.float32)
+    h = tl.load(H + row * 2 * N + cols, mask=mask, other=0.0).to(tl.float32)
+    g = tl.load(H + row * 2 * N + N + cols, mask=mask, other=0.0).to(tl.float32)
+    e = _libdevice.exp(-g)
+    s = _bf16(_libdevice.div_rn(g, 1.0 + e))
+    d_h = dy * s
+    d_s = _bf16(dy * h)
+    sig = _libdevice.div_rn(1.0, 1.0 + e)
+    d_g = d_s * sig * (1.0 + g * (1.0 - sig))
+    tl.store(DH + row * 2 * N + cols, d_h.to(tl.bfloat16), mask=mask)
+    tl.store(DH + row * 2 * N + N + cols, d_g.to(tl.bfloat16), mask=mask)
+
+
+class _SwiGLU(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, projected):
+        hc = projected.contiguous()
+        n = hc.shape[-1] // 2
+        m = hc.numel() // (2 * n)
+        out = torch.empty((*hc.shape[:-1], n), device=hc.device, dtype=hc.dtype)
+        block = 1024
+        _swiglu_fwd[(m, triton.cdiv(n, block))](hc, out, m, n, BLOCK=block, num_warps=4)
+        ctx.save_for_backward(hc)
+        COUNTERS["swiglu"] = COUNTERS.get("swiglu", 0) + 1
+        return out
+
+    @staticmethod
+    def backward(ctx, grad):
+        (hc,) = ctx.saved_tensors
+        g = grad.contiguous()
+        n = hc.shape[-1] // 2
+        m = hc.numel() // (2 * n)
+        dh = torch.empty_like(hc)
+        block = 1024
+        _swiglu_bwd[(m, triton.cdiv(n, block))](g, hc, dh, m, n, BLOCK=block, num_warps=4)
+        return dh
+
+
+def swiglu(projected: torch.Tensor) -> torch.Tensor:
+    if not projected.is_cuda or projected.dtype != torch.bfloat16 or projected.shape[-1] % 2:
+        hidden, gate = projected.chunk(2, dim=-1)
+        COUNTERS["fallback"] += 1
+        return hidden * torch.nn.functional.silu(gate)
+    return _SwiGLU.apply(projected)
+
+
+def _fused_swiglu_forward(self, hidden_states):
+    return swiglu(self.proj(hidden_states))
+
+
+if _SWIGLU:
+    from diffusers.models.activations import SwiGLU as _DiffusersSwiGLU
+
+    _DiffusersSwiGLU.forward = _fused_swiglu_forward

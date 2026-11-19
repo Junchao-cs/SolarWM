@@ -90,6 +90,8 @@ def _fused_block_forward(
 _FUSED = __import__("os").environ.get("SOLARWM_H3_FUSED", "0") == "1"
 if _FUSED:
     MiniMaxH3TransformerBlock.forward = _fused_block_forward
+if __import__("os").environ.get("SOLARWM_H3_SWIGLU_FUSED", "0") == "1":
+    from . import fused_ops as _fused_ops  # noqa: F401  (patches diffusers SwiGLU.forward)
 
 
 FusedPrope = Callable[
