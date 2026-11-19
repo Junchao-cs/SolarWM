@@ -394,3 +394,64 @@ def seed_lora_from_released(
             b[:, offset:].zero_()
             b[:, offset:stop].copy_((factor * up.float()).to(b.device, b.dtype))
     return len(pairs)
+
+
+
+_FAST_FORWARD_COUNTERS = {"fast": 0, "peft": 0}
+
+
+def install_fast_lora_forward() -> None:
+    """SOLARWM_H3_LORA_FAST=1: PEFT ``lora.Linear.forward`` without the identity work.
+
+    With dropout 0 (``nn.Identity``), ``alpha == rank`` (scaling exactly 1.0), one active
+    vanilla adapter and BF16 input/weights, PEFT computes
+    ``base(x) + lora_B(lora_A(x)) * 1.0`` followed by a same-dtype ``.to``. Multiplying a
+    BF16 tensor by 1.0 and casting to its own dtype are exact identities (also in backward),
+    so dropping those two kernels per projection gives bitwise-identical values. Anything
+    else takes PEFT's own forward.
+    """
+
+    import torch
+    from peft.tuners.lora import layer as lora_layer
+
+    linear = lora_layer.Linear
+    if getattr(linear, "_solarwm_fast_forward", False):
+        return
+    original = linear.forward
+
+    def forward(self, x, *args, **kwargs):
+        if (
+            args
+            or kwargs
+            or self.disable_adapters
+            or self.merged
+            or len(self.active_adapters) != 1
+        ):
+            _FAST_FORWARD_COUNTERS["peft"] += 1
+            return original(self, x, *args, **kwargs)
+        name = self.active_adapters[0]
+        if (
+            name not in self.lora_A
+            or name in self.lora_variant
+            or not isinstance(self.lora_dropout[name], torch.nn.Identity)
+            or self.scaling[name] != 1.0
+        ):
+            _FAST_FORWARD_COUNTERS["peft"] += 1
+            return original(self, x, *args, **kwargs)
+        lora_A = self.lora_A[name]
+        if x.dtype != lora_A.weight.dtype:
+            _FAST_FORWARD_COUNTERS["peft"] += 1
+            return original(self, x, *args, **kwargs)
+        result = self.base_layer(x)
+        if result.dtype != x.dtype:
+            _FAST_FORWARD_COUNTERS["peft"] += 1
+            return original(self, x, *args, **kwargs)
+        _FAST_FORWARD_COUNTERS["fast"] += 1
+        return result + self.lora_B[name](lora_A(x))
+
+    linear.forward = forward
+    linear._solarwm_fast_forward = True
+
+
+if __import__("os").environ.get("SOLARWM_H3_LORA_FAST", "0") == "1":
+    install_fast_lora_forward()
