@@ -447,11 +447,26 @@ def install_fast_lora_forward() -> None:
             _FAST_FORWARD_COUNTERS["peft"] += 1
             return original(self, x, *args, **kwargs)
         _FAST_FORWARD_COUNTERS["fast"] += 1
-        return result + self.lora_B[name](lora_A(x))
+        lora_B = self.lora_B[name]
+        if _ADDMM and lora_B.bias is None and result.dim() >= 2 and result.dtype == lora_B.weight.dtype:
+            # SOLARWM_H3_LORA_ADDMM=1: the up-projection accumulates onto the base output in
+            # the GEMM epilogue (FP32 accumulation, one BF16 rounding instead of two).
+            _FAST_FORWARD_COUNTERS["addmm"] = _FAST_FORWARD_COUNTERS.get("addmm", 0) + 1
+            down = lora_A(x)
+            out_features = result.shape[-1]
+            fused = torch.addmm(
+                result.reshape(-1, out_features),
+                down.reshape(-1, down.shape[-1]),
+                lora_B.weight.t(),
+            )
+            return fused.view(result.shape)
+        return result + lora_B(lora_A(x))
 
     linear.forward = forward
     linear._solarwm_fast_forward = True
 
+
+_ADDMM = __import__("os").environ.get("SOLARWM_H3_LORA_ADDMM", "0") == "1"
 
 if __import__("os").environ.get("SOLARWM_H3_LORA_FAST", "0") == "1":
     install_fast_lora_forward()
