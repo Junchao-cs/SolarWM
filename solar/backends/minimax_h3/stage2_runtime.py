@@ -18,6 +18,16 @@ from .stage2 import H3SGFCore
 from .torch_flow import predict_clean_sample
 
 
+def _critic_saved_attention_blocks() -> int:
+    import os
+
+    raw = os.environ.get("SOLARWM_H3_SAVED_ATTENTION_BLOCKS", "").strip()
+    if "=" not in raw:
+        return 0
+    values = dict(item.split("=", 1) for item in raw.split(",") if item.strip())
+    return int(values.get("critic", 0))
+
+
 class H3SGFTrainingRuntime(H3TrainingRuntime):
     def __init__(self, config: Any) -> None:
         super().__init__(config, defer_resume=True)
@@ -84,6 +94,9 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
             ignored_parameters=lora.parameters,
             activation_checkpointing=trainable,
             frozen_base_shard_size=8,
+            # SOLARWM_H3_SAVED_ATTENTION_BLOCKS=...,critic=<n>: critic blocks whose
+            # attention output the activation checkpointing keeps (default 0, upstream).
+            saved_attention_blocks=_critic_saved_attention_blocks() if trainable else 0,
         )
         role = "critic" if trainable else "teacher"
         identity = load_initial_weights(self.checkpoint_cfg["initialization"][role], lora)
