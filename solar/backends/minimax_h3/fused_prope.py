@@ -96,7 +96,11 @@ def _launch(x: torch.Tensor, matrix: torch.Tensor, transpose: bool, out: torch.T
     smb = 0 if matrix.shape[0] == 1 else matrix.stride(0)
     block = 32
     grid = (triton.cdiv(sequence, block), batch * heads)
-    _prope_kernel[grid](
+    kernel = _prope_kernel_v2 if _V2 else _prope_kernel
+    if _V2:
+        block = 64
+        grid = (triton.cdiv(sequence, block), batch * heads)
+    kernel[grid](
         x, matrix, out,
         sequence, heads,
         x.stride(0), x.stride(1), x.stride(2),
@@ -229,7 +233,11 @@ def _rope_prope_launch(x, cos, sin, matrix, backward, out=None):
     smb = 0 if matrix.shape[0] == 1 else matrix.stride(0)
     block = 32
     grid = (triton.cdiv(sequence, block), batch * heads)
-    _rope_prope_kernel[grid](
+    kernel = _rope_prope_kernel_v2 if _V2 else _rope_prope_kernel
+    if _V2:
+        block = 64
+        grid = (triton.cdiv(sequence, block), batch * heads)
+    kernel[grid](
         x, cos, sin, matrix, out,
         sequence, heads,
         x.stride(0), x.stride(1), x.stride(2),
@@ -267,6 +275,135 @@ def rope_prope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, matrix: to
         COUNTERS["rope_prope"] = COUNTERS.get("rope_prope", 0) + 1
         return _rope_prope_launch(x, cos, sin, matrix, False, out=out)
     return _RopeProject.apply(x, cos, sin, matrix)
+
+
+
+# ------------------------------------------------------------- coalesced variants (SOLARWM_H3_PROPE_V2=1)
+#
+# Same arithmetic as the kernels above (the same four-term FP32 expression per output, so the
+# results are bitwise equal to them), but the 32 camera channels of a row are loaded and stored
+# as one contiguous tile and split into the four vector components in registers (tl.split /
+# tl.join), instead of four stride-4 gathers and scatters of 2-byte elements.
+
+_V2 = os.environ.get("SOLARWM_H3_PROPE_V2", "0") == "1"
+
+
+@triton.jit
+def _project32(t, m_row, rmask, TRANSPOSE: tl.constexpr, BLOCK_S: tl.constexpr):
+    t4 = tl.reshape(t, [BLOCK_S, 8, 2, 2])
+    a, b = tl.split(t4)
+    x0, x2 = tl.split(a)
+    x1, x3 = tl.split(b)
+    if TRANSPOSE:
+        m00 = tl.load(m_row + 0, mask=rmask, other=0.0).to(tl.float32)
+        m01 = tl.load(m_row + 4, mask=rmask, other=0.0).to(tl.float32)
+        m02 = tl.load(m_row + 8, mask=rmask, other=0.0).to(tl.float32)
+        m03 = tl.load(m_row + 12, mask=rmask, other=0.0).to(tl.float32)
+        m10 = tl.load(m_row + 1, mask=rmask, other=0.0).to(tl.float32)
+        m11 = tl.load(m_row + 5, mask=rmask, other=0.0).to(tl.float32)
+        m12 = tl.load(m_row + 9, mask=rmask, other=0.0).to(tl.float32)
+        m13 = tl.load(m_row + 13, mask=rmask, other=0.0).to(tl.float32)
+        m20 = tl.load(m_row + 2, mask=rmask, other=0.0).to(tl.float32)
+        m21 = tl.load(m_row + 6, mask=rmask, other=0.0).to(tl.float32)
+        m22 = tl.load(m_row + 10, mask=rmask, other=0.0).to(tl.float32)
+        m23 = tl.load(m_row + 14, mask=rmask, other=0.0).to(tl.float32)
+        m30 = tl.load(m_row + 3, mask=rmask, other=0.0).to(tl.float32)
+        m31 = tl.load(m_row + 7, mask=rmask, other=0.0).to(tl.float32)
+        m32 = tl.load(m_row + 11, mask=rmask, other=0.0).to(tl.float32)
+        m33 = tl.load(m_row + 15, mask=rmask, other=0.0).to(tl.float32)
+    else:
+        m00 = tl.load(m_row + 0, mask=rmask, other=0.0).to(tl.float32)
+        m01 = tl.load(m_row + 1, mask=rmask, other=0.0).to(tl.float32)
+        m02 = tl.load(m_row + 2, mask=rmask, other=0.0).to(tl.float32)
+        m03 = tl.load(m_row + 3, mask=rmask, other=0.0).to(tl.float32)
+        m10 = tl.load(m_row + 4, mask=rmask, other=0.0).to(tl.float32)
+        m11 = tl.load(m_row + 5, mask=rmask, other=0.0).to(tl.float32)
+        m12 = tl.load(m_row + 6, mask=rmask, other=0.0).to(tl.float32)
+        m13 = tl.load(m_row + 7, mask=rmask, other=0.0).to(tl.float32)
+        m20 = tl.load(m_row + 8, mask=rmask, other=0.0).to(tl.float32)
+        m21 = tl.load(m_row + 9, mask=rmask, other=0.0).to(tl.float32)
+        m22 = tl.load(m_row + 10, mask=rmask, other=0.0).to(tl.float32)
+        m23 = tl.load(m_row + 11, mask=rmask, other=0.0).to(tl.float32)
+        m30 = tl.load(m_row + 12, mask=rmask, other=0.0).to(tl.float32)
+        m31 = tl.load(m_row + 13, mask=rmask, other=0.0).to(tl.float32)
+        m32 = tl.load(m_row + 14, mask=rmask, other=0.0).to(tl.float32)
+        m33 = tl.load(m_row + 15, mask=rmask, other=0.0).to(tl.float32)
+    y0 = m00[:, None] * x0 + m01[:, None] * x1 + m02[:, None] * x2 + m03[:, None] * x3
+    y1 = m10[:, None] * x0 + m11[:, None] * x1 + m12[:, None] * x2 + m13[:, None] * x3
+    y2 = m20[:, None] * x0 + m21[:, None] * x1 + m22[:, None] * x2 + m23[:, None] * x3
+    y3 = m30[:, None] * x0 + m31[:, None] * x1 + m32[:, None] * x2 + m33[:, None] * x3
+    out = tl.join(tl.join(y0, y2), tl.join(y1, y3))
+    return tl.reshape(out, [BLOCK_S, 32])
+
+
+@triton.jit
+def _prope_kernel_v2(
+    X, M, OUT,
+    S, H,
+    sxb, sxh, sxs,
+    smb, sms,
+    sob, soh, sos,
+    TRANSPOSE: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    pid_s = tl.program_id(0)
+    bh = tl.program_id(1)
+    b = bh // H
+    h = bh % H
+    rows = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    rmask = rows < S
+    x_row = X + b * sxb + h * sxh + rows * sxs
+    o_row = OUT + b * sob + h * soh + rows * sos
+    c96 = tl.arange(0, 128)
+    pmask = rmask[:, None] & (c96 < 96)[None, :]
+    v = tl.load(x_row[:, None] + c96[None, :], mask=pmask, other=0.0)
+    tl.store(o_row[:, None] + c96[None, :], v, mask=pmask)
+    c32 = tl.arange(0, 32)
+    t = tl.load(x_row[:, None] + 96 + c32[None, :], mask=rmask[:, None], other=0.0).to(tl.float32)
+    y = _project32(t, M + b * smb + rows * sms, rmask, TRANSPOSE, BLOCK_S)
+    tl.store(o_row[:, None] + 96 + c32[None, :], y.to(OUT.dtype.element_ty), mask=rmask[:, None])
+
+
+@triton.jit
+def _rope_prope_kernel_v2(
+    X, COS, SIN, M, OUT,
+    S, H,
+    sxb, sxs, sxh,
+    scs,
+    smb, sms,
+    sob, sos, soh,
+    BACKWARD: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    pid_s = tl.program_id(0)
+    bh = tl.program_id(1)
+    b = bh // H
+    h = bh % H
+    rows = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)
+    rmask = rows < S
+    x_row = X + b * sxb + h * sxh + rows * sxs
+    o_row = OUT + b * sob + h * soh + rows * sos
+    c_row = rows * scs
+    c48 = tl.arange(0, 64)
+    cm = rmask[:, None] & (c48 < 48)[None, :]
+    x1 = tl.load(x_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    x2 = tl.load(x_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    cos1 = _bf16r(tl.load(COS + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    cos2 = _bf16r(tl.load(COS + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    sin1 = _bf16r(tl.load(SIN + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    sin2 = _bf16r(tl.load(SIN + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    if BACKWARD:
+        y1 = _bf16r(_bf16r(x1 * cos1) + _bf16r(x2 * sin2))
+        y2 = _bf16r(_bf16r(x2 * cos2) - _bf16r(x1 * sin1))
+    else:
+        y1 = _bf16r(_bf16r(x1 * cos1) + _bf16r(-x2 * sin1))
+        y2 = _bf16r(_bf16r(x2 * cos2) + _bf16r(x1 * sin2))
+    tl.store(o_row[:, None] + c48[None, :], y1.to(OUT.dtype.element_ty), mask=cm)
+    tl.store(o_row[:, None] + 48 + c48[None, :], y2.to(OUT.dtype.element_ty), mask=cm)
+    c32 = tl.arange(0, 32)
+    t = tl.load(x_row[:, None] + 96 + c32[None, :], mask=rmask[:, None], other=0.0).to(tl.float32)
+    y = _project32(t, M + b * smb + rows * sms, rmask, BACKWARD, BLOCK_S)
+    tl.store(o_row[:, None] + 96 + c32[None, :], y.to(OUT.dtype.element_ty), mask=rmask[:, None])
 
 
 __all__ = ["COUNTERS", "prope_fused_enabled", "prope_project", "rope_prope"]
