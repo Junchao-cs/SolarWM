@@ -285,7 +285,6 @@ A2A_COUNTERS = {"fast": 0, "reference": 0}
 
 
 _A2A_COPY = __import__("os").environ.get("SOLARWM_H3_A2A_COPY", "0") == "1"
-_COPY_KERNEL = None
 
 
 def _block_transpose(src: Any, outer: int, inner: int, width: int) -> Any:
@@ -294,31 +293,9 @@ def _block_transpose(src: Any, outer: int, inner: int, width: int) -> Any:
     SOLARWM_H3_A2A_COPY=1: one Triton kernel moving contiguous ``width``-element rows (the
     SP exchange's head blocks, 3.5-7 KB) with wide loads/stores instead of torch's generic
     strided copy. Pure data movement (bitwise)."""
-    import torch
+    from .copy_kernels import block_transpose
 
-    global _COPY_KERNEL
-    if _COPY_KERNEL is None:
-        import triton
-        import triton.language as tl
-
-        @triton.jit
-        def _kernel(SRC, DST, outer, inner, width, BLOCK: tl.constexpr):
-            row = tl.program_id(0)  # source row index in [outer * inner)
-            o = row // inner
-            i = row % inner
-            cols = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
-            mask = cols < width
-            value = tl.load(SRC + row.to(tl.int64) * width + cols, mask=mask)
-            dst_row = i.to(tl.int64) * outer + o
-            tl.store(DST + dst_row * width + cols, value, mask=mask)
-
-        _COPY_KERNEL = (_kernel, triton)
-    kernel, triton = _COPY_KERNEL
-    src = src.contiguous()
-    out = torch.empty((inner, outer, width), device=src.device, dtype=src.dtype)
-    block = 1024
-    kernel[(outer * inner, triton.cdiv(width, block))](src, out, outer, inner, width, BLOCK=block)
-    return out
+    return block_transpose(src, outer, inner, width)
 
 
 def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], current: Any) -> Any:
