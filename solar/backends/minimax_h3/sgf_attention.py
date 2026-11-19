@@ -382,7 +382,17 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool
     return tuple(segments)
 
 
+def _fused() -> bool:
+    from .fused_prope import prope_fused_enabled
+
+    return prope_fused_enabled()
+
+
 def _suffix(features, transform):
+    from .fused_prope import prope_fused_enabled, prope_project
+
+    if prope_fused_enabled():
+        return prope_project(features, transform.keywords["matrix"])
     return torch.cat((features[..., :96], transform(features[..., 96:128])), dim=-1)
 
 
@@ -409,6 +419,18 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
 
     def calculate(query, key_, value, qr, kr, prope):
         apply_q, apply_kv, apply_output = prope
+        if _fused():
+            # SOLARWM_H3_PROPE_FUSED=1: MM-RoPE + camera PRoPE of q/k in one pass each.
+            from .fused_prope import prope_project, rope_prope
+
+            kv_matrix = apply_kv.keywords["matrix"]
+            query = rope_prope(query, qr[0], qr[1], apply_q.keywords["matrix"])
+            key_ = rope_prope(key_, kr[0], kr[1], kv_matrix)
+            value = prope_project(value.transpose(1, 2), kv_matrix).transpose(1, 2)
+            output = attend(query, key_, value)
+            return prope_project(
+                output.transpose(1, 2), apply_output.keywords["matrix"]
+            ).transpose(1, 2)
         query = apply_rotary(query, *qr)
         key_ = apply_rotary(key_, *kr)
         query, key_, value = (
@@ -481,8 +503,13 @@ def _rows_of(transform, start: int, stop: int):
 
 
 def _suffix_into(features, transform, out):
-    """``out.copy_(_suffix(features, transform))``."""
-    out.copy_(_suffix(features, transform))
+    """``out.copy_(_suffix(features, transform))``; the fused kernel writes ``out`` directly."""
+    from .fused_prope import _launch, prope_fused_enabled
+
+    if prope_fused_enabled() and not torch.is_grad_enabled():
+        _launch(features, transform.keywords["matrix"], False, out=out)
+    else:
+        out.copy_(_suffix(features, transform))
 
 
 def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend, prefix, rows):
@@ -520,9 +547,15 @@ def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend
         raw_keys = torch.cat((prefix_keys, *(item[1] for item in history)), dim=1)
         raw_values = torch.cat((prefix_values, *(item[2] for item in history)), dim=1)
         kept_kv = _rows_of(apply_kv, 0, kept)
-        rotated = apply_rotary(raw_keys, kr[0][:kept], kr[1][:kept])
-        _suffix_into(rotated.transpose(1, 2), kept_kv, keys[:, :kept].transpose(1, 2))
-        del rotated
+        if _fused():
+            from .fused_prope import rope_prope
+
+            rope_prope(raw_keys, kr[0][:kept], kr[1][:kept], kept_kv.keywords["matrix"],
+                       out=keys[:, :kept])
+        else:
+            rotated = apply_rotary(raw_keys, kr[0][:kept], kr[1][:kept])
+            _suffix_into(rotated.transpose(1, 2), kept_kv, keys[:, :kept].transpose(1, 2))
+            del rotated
         _suffix_into(raw_values.transpose(1, 2), kept_kv, values[:, :kept].transpose(1, 2))
         del raw_keys, raw_values
         entry = [index, keys, values]
@@ -533,9 +566,16 @@ def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend
     keys, values = entry[1], entry[2]
     PREFIX_REUSE_COUNTERS["suffix_layers"] += 1
     chunk_kv = _rows_of(apply_kv, kept, total)
-    rotated = apply_rotary(k, kr[0][kept:], kr[1][kept:])
-    _suffix_into(rotated.transpose(1, 2), chunk_kv, keys[:, kept:total].transpose(1, 2))
-    query = _suffix(apply_rotary(q, *qr).transpose(1, 2), apply_q).transpose(1, 2)
+    if _fused():
+        from .fused_prope import rope_prope
+
+        rope_prope(k, kr[0][kept:], kr[1][kept:], chunk_kv.keywords["matrix"],
+                   out=keys[:, kept:total])
+        query = rope_prope(q, qr[0], qr[1], apply_q.keywords["matrix"])
+    else:
+        rotated = apply_rotary(k, kr[0][kept:], kr[1][kept:])
+        _suffix_into(rotated.transpose(1, 2), chunk_kv, keys[:, kept:total].transpose(1, 2))
+        query = _suffix(apply_rotary(q, *qr).transpose(1, 2), apply_q).transpose(1, 2)
     _suffix_into(v.transpose(1, 2), chunk_kv, values[:, kept:total].transpose(1, 2))
     output = attend(query, keys[:, :total], values[:, :total])
     output = _suffix(output.transpose(1, 2), apply_output).transpose(1, 2)

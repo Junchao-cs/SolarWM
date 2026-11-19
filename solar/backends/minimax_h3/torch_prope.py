@@ -142,6 +142,17 @@ def prope_apply(
 
     query_matrix, kv_matrix, output_matrix = matrices
 
+    from .fused_prope import prope_fused_enabled, prope_project
+
+    if prope_fused_enabled():
+        # SOLARWM_H3_PROPE_FUSED=1: one pass per tensor (see fused_prope).
+        return (
+            prope_project(q, query_matrix),
+            prope_project(k, kv_matrix),
+            prope_project(v, kv_matrix),
+            partial(prope_project, matrix=output_matrix),
+        )
+
     def suffix(features: Any, transform: Callable[[Any], Any]) -> Any:
         native = features[..., :H3_CAMERA_PROPE_DIM_START]
         camera = features[..., H3_CAMERA_PROPE_DIM_START:H3_CAMERA_PROPE_DIM_END]
