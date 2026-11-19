@@ -61,6 +61,37 @@ from .segmented_attention import H3SegmentPlan, segment_attention
 get_parameter_dtype = patch_minimax_h3_parameter_dtype()
 
 
+def _fused_block_forward(
+    self: Any,
+    hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    adaln_indices: torch.Tensor,
+    rotary_emb: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: Any = None,
+) -> torch.Tensor:
+    """``MiniMaxH3TransformerBlock.forward`` with fused AdaLN norm/modulation and gated
+    residual kernels (SOLARWM_H3_FUSED=1); same operations and parameters."""
+
+    from .fused_ops import gated_residual, rmsnorm_modulate
+
+    shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaln_proj(temb)
+    norm_hidden_states = rmsnorm_modulate(
+        self.norm1, hidden_states, scale_msa, shift_msa, adaln_indices
+    )
+    attn_output = self.attn(norm_hidden_states, rotary_emb, attention_mask)
+    hidden_states = gated_residual(hidden_states, gate_msa, adaln_indices, attn_output)
+    norm_hidden_states = rmsnorm_modulate(
+        self.norm2, hidden_states, scale_mlp, shift_mlp, adaln_indices
+    )
+    ff_output = self.ff(norm_hidden_states)
+    return gated_residual(hidden_states, gate_mlp, adaln_indices, ff_output)
+
+
+_FUSED = __import__("os").environ.get("SOLARWM_H3_FUSED", "0") == "1"
+if _FUSED:
+    MiniMaxH3TransformerBlock.forward = _fused_block_forward
+
+
 FusedPrope = Callable[
     ..., tuple[torch.Tensor, torch.Tensor, torch.Tensor, Callable[[torch.Tensor], torch.Tensor]]
 ]
@@ -138,6 +169,22 @@ class H3AttentionControl:
     prope_kwargs: dict[str, Any] | None
     sgf_attention: Any = None
     sequence_lengths: tuple[int, ...] = ()
+    # SOLARWM_H3_PROPE_PLAN=1: this forward's PRoPE matrices, built by the first layer.
+    prope_plan: Any = None
+
+
+class _PropePlan:
+    """Per-forward memo of the PRoPE camera matrices (plain object: passed by reference)."""
+
+    __slots__ = ("matrices", "key")
+
+    def __init__(self) -> None:
+        self.matrices = None
+        self.key = None
+
+
+_PROPE_PLAN = __import__("os").environ.get("SOLARWM_H3_PROPE_PLAN", "0") == "1"
+PROPE_PLAN_COUNTERS = {"built": 0, "reused": 0}
 
 
 def _is_flex_block_mask(mask: Any) -> bool:
@@ -230,6 +277,7 @@ class SolarMiniMaxH3AttnProcessor(MiniMaxH3AttnProcessor):
             cam_K=control.cam_K,
             prope_kwargs=control.prope_kwargs,
             sgf_attention=control.sgf_attention,
+            prope_plan=control.prope_plan,
         )
 
 
@@ -298,6 +346,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         cam_viewmats: torch.Tensor | None,
         cam_K: torch.Tensor | None,
         prope_kwargs: dict[str, Any] | None,
+        prope_plan: Any = None,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -305,6 +354,31 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         Callable[[torch.Tensor], torch.Tensor] | None,
         torch.Tensor | None,
     ]:
+        if (
+            prope_plan is not None
+            and prope_plan.matrices is not None
+            and fused_prope is True
+            and not prope_kwargs
+        ):
+            # Layer 2..N of this forward: the camera matrices are those of layer 1.
+            if prope_plan.key != (query.shape[:2], query.dtype, query.device):
+                raise RuntimeError("H3 PRoPE plan reused with a different q shape/dtype")
+            from .torch_prope import prope_apply
+
+            PROPE_PLAN_COUNTERS["reused"] += 1
+            query, key, value, apply_output = prope_apply(
+                query.transpose(1, 2),
+                key.transpose(1, 2),
+                value.transpose(1, 2),
+                prope_plan.matrices,
+            )
+            return (
+                query.transpose(1, 2),
+                key.transpose(1, 2),
+                value.transpose(1, 2),
+                apply_output,
+                None,
+            )
         cameras_present = cam_viewmats is not None or cam_K is not None
         if fused_prope is False:
             return query, key, value, None, None
@@ -387,14 +461,30 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             )
             full_viewmats = full_viewmats.index_copy(1, indices, viewmats.to(dtype))
             full_intrinsics = full_intrinsics.index_copy(1, indices, intrinsics.to(dtype))
-            query, key, value, apply_output = _default_prope()(
-                query.transpose(1, 2),
-                key.transpose(1, 2),
-                value.transpose(1, 2),
-                viewmats=full_viewmats,
-                Ks=full_intrinsics,
-                **(prope_kwargs or {}),
-            )
+            if prope_plan is not None and fused_prope is True and not prope_kwargs:
+                from .torch_prope import prope_apply, prope_matrices
+
+                # Same checks/shape validation as prope_qkv, then the matrices once.
+                if tuple(full_viewmats.shape) != (batch, sequence, 4, 4) or query.shape[-1] != 128:
+                    raise ValueError("H3 PRoPE plan requires token-aligned cameras and head_dim=128")
+                prope_plan.matrices = prope_matrices(full_viewmats, full_intrinsics)
+                prope_plan.key = (query.shape[:2], query.dtype, query.device)
+                PROPE_PLAN_COUNTERS["built"] += 1
+                query, key, value, apply_output = prope_apply(
+                    query.transpose(1, 2),
+                    key.transpose(1, 2),
+                    value.transpose(1, 2),
+                    prope_plan.matrices,
+                )
+            else:
+                query, key, value, apply_output = _default_prope()(
+                    query.transpose(1, 2),
+                    key.transpose(1, 2),
+                    value.transpose(1, 2),
+                    viewmats=full_viewmats,
+                    Ks=full_intrinsics,
+                    **(prope_kwargs or {}),
+                )
             return (
                 query.transpose(1, 2),
                 key.transpose(1, 2),
@@ -451,6 +541,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         cam_K: torch.Tensor | None,
         prope_kwargs: dict[str, Any] | None,
         sgf_attention: Any = None,
+        prope_plan: Any = None,
     ) -> torch.Tensor:
         if attn.fused_projections:
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
@@ -461,15 +552,22 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         query = query.unflatten(-1, (attn.heads, -1))
         key = key.unflatten(-1, (attn.heads, -1))
         value = value.unflatten(-1, (attn.heads, -1))
-        query = attn.norm_q(query)
-        key = attn.norm_k(key)
-
         if sgf_attention is not None:
+            query = attn.norm_q(query)
+            key = attn.norm_k(key)
             return cls._sgf_attention_forward(attn, query, key, value, sgf_attention)
 
         # H3 native MM-RoPE first, then token-selective camera PRoPE.
-        query = _apply_rotary_emb(query, *rotary_emb)
-        key = _apply_rotary_emb(key, *rotary_emb)
+        if _FUSED:
+            from .fused_ops import qk_norm_rope
+
+            query = qk_norm_rope(attn.norm_q, query, *rotary_emb)
+            key = qk_norm_rope(attn.norm_k, key, *rotary_emb)
+        else:
+            query = attn.norm_q(query)
+            key = attn.norm_k(key)
+            query = _apply_rotary_emb(query, *rotary_emb)
+            key = _apply_rotary_emb(key, *rotary_emb)
         query, key, value, apply_output, prope_indices = cls._prepare_prope(
             query=query,
             key=key,
@@ -480,6 +578,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             cam_viewmats=cam_viewmats,
             cam_K=cam_K,
             prope_kwargs=prope_kwargs,
+            prope_plan=prope_plan,
         )
 
         sp_enabled = is_sequence_parallel_enabled()
@@ -504,6 +603,10 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             attended = segment_attention(query, key, value, attention_mask, attn.h3_layer_index)
         elif isinstance(attention_mask, _w6.H3W6Plan):
             attended = _w6.w6_attention(query, key, value, attention_mask)
+        elif isinstance(attention_mask, _w6.H3W6Run):
+            attended = _w6.w6_run_attention(
+                query, key, value, attention_mask, attn.h3_layer_index
+            )
         elif _is_flex_block_mask(attention_mask):
             expected_shape = (int(query.shape[1]), int(key.shape[1]))
             if tuple(attention_mask.seq_lengths) != expected_shape:
@@ -634,20 +737,33 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
 
             sgf_attention = prepare_sgf_rotaries(sgf_attention, self.rope)
 
-        video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
-        audio_embeds = self.audio_proj_in(
-            audio_hidden_states.to(get_parameter_dtype(self.audio_proj_in))
+        suffix_run = (
+            attention_mask
+            if isinstance(attention_mask, _w6.H3W6Run) and attention_mask.mode == "suffix"
+            else None
         )
-        text_embeds = self.context_embedder(
-            encoder_hidden_states.to(get_parameter_dtype(self.context_embedder))
-        )
-        text_embeds = self.token_refiner(text_embeds)
-        packed = text_embeds.new_zeros(
-            (text_embeds.shape[0], sequence_length, text_embeds.shape[-1])
-        )
-        packed = packed.index_copy(1, text_indices, text_embeds)
-        packed = packed.index_copy(1, video_indices, video_embeds.to(text_embeds.dtype))
-        packed = packed.index_copy(1, audio_indices, audio_embeds.to(text_embeds.dtype))
+        if suffix_run is not None:
+            # Noisy rows only: every input of the kept prefix is already reflected in
+            # the cached keys/values, and no prefix row's output is read.
+            if int(hidden_states.shape[1]) != suffix_run.suffix.suffix_rows:
+                raise ValueError("H3 W6 suffix evaluation expects exactly the noisy rows")
+            video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
+            packed = video_embeds.to(get_parameter_dtype(self.context_embedder))
+        else:
+            video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
+            audio_embeds = self.audio_proj_in(
+                audio_hidden_states.to(get_parameter_dtype(self.audio_proj_in))
+            )
+            text_embeds = self.context_embedder(
+                encoder_hidden_states.to(get_parameter_dtype(self.context_embedder))
+            )
+            text_embeds = self.token_refiner(text_embeds)
+            packed = text_embeds.new_zeros(
+                (text_embeds.shape[0], sequence_length, text_embeds.shape[-1])
+            )
+            packed = packed.index_copy(1, text_indices, text_embeds)
+            packed = packed.index_copy(1, video_indices, video_embeds.to(text_embeds.dtype))
+            packed = packed.index_copy(1, audio_indices, audio_embeds.to(text_embeds.dtype))
 
         temb = self._time_condition(timestep, r_timestep, parameter_dtype=get_parameter_dtype)
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
@@ -674,7 +790,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         rotary_emb = self.rope(position_ids)
         needs_control = (
             _is_flex_block_mask(attention_mask)
-            or isinstance(attention_mask, (H3SegmentPlan, _w6.H3W6Plan))
+            or isinstance(attention_mask, (H3SegmentPlan, _w6.H3W6Plan, _w6.H3W6Run))
             or fused_prope is not None
             or cam_viewmats is not None
             or cam_K is not None
@@ -693,6 +809,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
                 prope_kwargs=prope_kwargs,
                 sgf_attention=sgf_attention,
                 sequence_lengths=shard.sequence_lengths if sp_enabled else (),
+                prope_plan=_PropePlan() if _PROPE_PLAN and sgf_attention is None else None,
             )
             if needs_control
             else attention_mask
@@ -713,6 +830,14 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             get_parameter_dtype(self.proj_out)
         )
         video_packed_output = self.proj_out(packed)
+        if suffix_run is not None:
+            if sp_enabled:
+                video_packed_output = sequence_model_parallel_all_gather(video_packed_output, dim=1)
+            if int(video_packed_output.shape[1]) != sequence_length:
+                raise RuntimeError("H3 W6 suffix output does not cover the noisy rows")
+            if not return_dict:
+                return video_packed_output, None
+            return MiniMaxH3TransformerOutput(sample=video_packed_output, audio_sample=None)
         audio_packed_output = self.audio_proj_out(packed)
         if sp_enabled:
             # Restore only the small output-head widths, not the 5,376-wide

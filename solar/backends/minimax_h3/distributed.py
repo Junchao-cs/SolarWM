@@ -471,6 +471,14 @@ class H3PackedSequenceShard:
     sequence_lengths: tuple[int, ...]
 
 
+import os as _os
+
+# SOLARWM_H3_SP_LENGTH_CACHE=1: check each distinct packed SP layout once per
+# process (an all_gather plus host sync) instead of on every model forward.
+_VERIFIED_LENGTHS_ENABLED = _os.environ.get("SOLARWM_H3_SP_LENGTH_CACHE", "0") == "1"
+_VERIFIED_LENGTHS: set[tuple[int, ...]] = set()
+
+
 def shard_stage0p5_packed_sequence(
     *,
     hidden_states: Any,
@@ -502,8 +510,16 @@ def shard_stage0p5_packed_sequence(
         - contiguous_packed_bounds(total, sp_size=get_sp_size(), sp_rank=rank)[0]
         for rank in range(get_sp_size())
     )
-    if register_sequence_length(stop - start) != lengths:
-        raise RuntimeError("SP ranks disagree on packed sequence lengths")
+    if _VERIFIED_LENGTHS_ENABLED and lengths in _VERIFIED_LENGTHS:
+        # The SP group already agreed on this exact layout (a pure function of the
+        # packed length); every rank skips the same re-check, so collective counts
+        # stay aligned. Only the registration it would perform remains.
+        state().sequence_lengths = lengths
+    else:
+        if register_sequence_length(stop - start) != lengths:
+            raise RuntimeError("SP ranks disagree on packed sequence lengths")
+        if _VERIFIED_LENGTHS_ENABLED:
+            _VERIFIED_LENGTHS.add(lengths)
 
     controls = (prope_token_indices, prope_frame_ids, camera_viewmats, camera_K)
     if all(value is None for value in controls):
@@ -590,7 +606,10 @@ def validate_packed_attention_mask(attention_mask: Any, *, total_tokens: int) ->
 
     if attention_mask is None:
         return
-    if isinstance(attention_mask, H3SegmentPlan) or type(attention_mask).__name__ == "H3W6Plan":
+    if isinstance(attention_mask, H3SegmentPlan) or type(attention_mask).__name__ in {
+        "H3W6Plan",
+        "H3W6Run",
+    }:
         if int(attention_mask.sequence_length) != int(total_tokens):
             raise ValueError("H3 packed SP segment plan must cover the complete global sequence")
         return
