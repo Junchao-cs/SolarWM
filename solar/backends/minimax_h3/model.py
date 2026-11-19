@@ -54,6 +54,7 @@ from .distributed import (
 from .distributed import (
     state as get_sequence_parallel_state,
 )
+from . import fast_attention as _fast_attention
 from .segmented_attention import H3SegmentPlan, segment_attention
 
 get_parameter_dtype = patch_minimax_h3_parameter_dtype()
@@ -416,11 +417,9 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         def segment_attention(q, k, v):
             # Each segment contains exactly its visible keys. Flash
             # attention needs no token-level mask or dense score tensor.
-            from flash_attn import flash_attn_func
+            from .fast_attention import attention
 
-            return flash_attn_func(
-                q.contiguous(), k.contiguous(), v.contiguous(), dropout_p=0.0, causal=False
-            )
+            return attention(q.contiguous(), k.contiguous(), v.contiguous())
 
         attended = attend_sgf(
             query,
@@ -527,6 +526,8 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
                 attention_mask,
                 training=attn.training,
             ).transpose(1, 2)
+        elif attention_mask is None and _fast_attention.cudnn_enabled():
+            attended = _fast_attention.cudnn_attention(query, key, value)
         else:
             attended = dispatch_attention_fn(
                 query,
