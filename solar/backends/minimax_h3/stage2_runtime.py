@@ -18,6 +18,19 @@ from .stage2 import H3SGFCore
 from .torch_flow import predict_clean_sample
 
 
+_CRITIC_CUDNN = __import__("os").environ.get("SOLARWM_H3_SGF_CRITIC_CUDNN", "0") == "1"
+
+
+def _critic_attention():
+    """SOLARWM_H3_SGF_CRITIC_CUDNN=1: the critic update (forward and backward) on cuDNN while the
+    rest of Stage2 keeps FlashAttention-2 (SOLARWM_H3_CUDNN_STAGES without stage2)."""
+    import contextlib
+
+    from .fast_attention import cudnn_scope
+
+    return cudnn_scope() if _CRITIC_CUDNN else contextlib.nullcontext()
+
+
 def _critic_saved_attention_blocks() -> int:
     import os
 
@@ -214,13 +227,14 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
         with torch.no_grad():
             clean = h3_sgf_replay(student=self.model, inputs=inputs, rollout=rollout)[:, :, :47]
             noisy, noise, vt, audio, at = core.score_inputs(clean)
-        self._phase("critic_forward")
-        velocity = core.score_forward(critic["model"], inputs, noisy, vt, audio, at)
-        loss = h3_sgf_critic_loss(velocity, noise=noise, clean=clean)
-        if not bool(torch.isfinite(loss)):
-            raise FloatingPointError("non-finite H3 SGF critic loss")
-        self._phase("critic_backward")
-        (loss / get_sp_size()).backward()
+        with _critic_attention():
+            self._phase("critic_forward")
+            velocity = core.score_forward(critic["model"], inputs, noisy, vt, audio, at)
+            loss = h3_sgf_critic_loss(velocity, noise=noise, clean=clean)
+            if not bool(torch.isfinite(loss)):
+                raise FloatingPointError("non-finite H3 SGF critic loss")
+            self._phase("critic_backward")
+            (loss / get_sp_size()).backward()
         stats["critic_grad_norm"] = self._finish_update(
             critic["model"],
             critic["lora"],

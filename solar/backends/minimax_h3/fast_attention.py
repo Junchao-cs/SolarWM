@@ -25,10 +25,29 @@ if _BACKEND not in {"flash", "cudnn"}:
 COUNTERS = {"cudnn_forward": 0, "cudnn_backward": 0, "deterministic_backward": 0}
 
 
+_FORCE_CUDNN = [0]
+
+
+class cudnn_scope:
+    """Context: cuDNN attention inside (with SOLARWM_H3_ATTENTION=cudnn) even outside the
+    stages that SOLARWM_H3_CUDNN_STAGES lists. Wrap a forward and its backward together, so
+    that activation-checkpoint recomputation runs the same kernel as the forward."""
+
+    def __enter__(self):
+        _FORCE_CUDNN[0] += 1
+        return self
+
+    def __exit__(self, *exc):
+        _FORCE_CUDNN[0] -= 1
+        return False
+
+
 def cudnn_enabled() -> bool:
     from .stage_scope import cudnn_active
 
-    return _BACKEND == "cudnn" and cudnn_active()
+    if _BACKEND != "cudnn":
+        return False
+    return cudnn_active() or bool(_FORCE_CUDNN[0])
 
 
 def _bhsd(tensor: torch.Tensor) -> torch.Tensor:
