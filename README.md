@@ -63,6 +63,8 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 
 ## 📰 News
 
+- **November 19, 2026:** We release a preview of **SolarWM 1.5 Events** ([Blog](https://solarx-team.github.io/SolarWM-1.5-Event/)), bringing **promptable events to streaming, few-step generation**: type an event mid-rollout and it appears within one 0.71-second chunk while camera control continues, and the change persists in the world.
+
 - **November 5, 2026:** We release **SolarWM-H3 Memory** ([Blog](https://solarx-team.github.io/SolarWM-H3-Memory) · [Weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B/tree/main/SolarWM-h3-33B-memory-stage1-158f) · [Usage](docs/solar_wm/backends/minimax-h3.md#enable-memory)), improving long-term scene consistency and preserving visual details across revisits.
 
 - **October 22, 2026:** We release **SolarWM-H3 Realtime** ([Blog](https://solarx-team.github.io/SolarWM-H3-Realtime/)), enabling **low-latency interactive video generation** from an image and a prompt, with real-time camera control ([Code](deploy/solar_wm/)).
