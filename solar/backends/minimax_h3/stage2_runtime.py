@@ -31,6 +31,18 @@ def _critic_attention():
     return cudnn_scope() if _CRITIC_CUDNN else contextlib.nullcontext()
 
 
+_ROLLOUT_CUDNN = __import__("os").environ.get("SOLARWM_H3_SGF_ROLLOUT_CUDNN", "0") == "1"
+
+
+def _rollout_attention():
+    """SOLARWM_H3_SGF_ROLLOUT_CUDNN=1: the detached rollouts on cuDNN attention (no backward)."""
+    import contextlib
+
+    from .fast_attention import cudnn_scope
+
+    return cudnn_scope() if _ROLLOUT_CUDNN else contextlib.nullcontext()
+
+
 def _critic_saved_attention_blocks() -> int:
     import os
 
@@ -165,9 +177,10 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
             )
 
     def _rollout(self, inputs: Any) -> Any:
-        return self.core.rollout(
-            inputs, progress=lambda chunk: self._phase(f"rollout_chunk={chunk}/10")
-        )
+        with _rollout_attention():
+            return self.core.rollout(
+                inputs, progress=lambda chunk: self._phase(f"rollout_chunk={chunk}/10")
+            )
 
     def train_outer_step(self) -> dict[str, float]:
         torch, core = self.torch, self.core
