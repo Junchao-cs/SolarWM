@@ -93,7 +93,7 @@ class H3SGFPrefixKV:
     chunk's rows only ('suffix') and reads them. A plain object: passed by reference.
     """
 
-    __slots__ = ("layers", "mode", "window")
+    __slots__ = ("layers", "mode", "window", "storage")
 
     def __init__(self) -> None:
         self.layers: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
@@ -101,6 +101,9 @@ class H3SGFPrefixKV:
         # SOLARWM_H3_SGF_KV_WINDOW=1: per layer (chunk index, keys, values, prepared rows) of
         # the current window's attention keys/values after MM-RoPE and camera PRoPE.
         self.window: dict[int, list] = {}
+        # One allocation for every layer's window buffers, so that the rollout frees them as
+        # a single block (100 separate ~115 MB segments fragmented the caching allocator).
+        self.storage = None
 
 
 _PREFIX_REUSE = os.environ.get("SOLARWM_H3_SGF_PREFIX_REUSE", "0") == "1"
@@ -112,6 +115,7 @@ PREFIX_REUSE_COUNTERS = {"captured_layers": 0, "suffix_layers": 0}
 # commit). Their transformed keys/values are built once per chunk and layer into a
 # per-layer buffer; each evaluation transforms and writes only the current chunk's rows.
 _KV_WINDOW = os.environ.get("SOLARWM_H3_SGF_KV_WINDOW", "0") == "1"
+_WINDOW_LAYERS = 50  # MiniMax-H3 transformer blocks
 KV_WINDOW_COUNTERS = {"built": 0, "reused": 0}
 
 
@@ -581,8 +585,16 @@ def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend
         maximum = prefix + 6 * chunk_rows
         if entry is None:
             shape = (k.shape[0], maximum, k.shape[2], k.shape[3])
-            keys = torch.empty(shape, device=k.device, dtype=k.dtype)
-            values = torch.empty(shape, device=v.device, dtype=v.dtype)
+            storage = prefix_kv.storage
+            if storage is None or tuple(storage.shape[2:]) != shape or layer >= storage.shape[0]:
+                if storage is None:
+                    storage = torch.empty(
+                        (_WINDOW_LAYERS, 2, *shape), device=k.device, dtype=k.dtype
+                    )
+                    prefix_kv.storage = storage
+                if tuple(storage.shape[2:]) != shape or layer >= storage.shape[0]:
+                    raise RuntimeError("H3 SGF KV window storage does not fit this layer")
+            keys, values = storage[layer, 0], storage[layer, 1]
         else:
             keys, values = entry[1], entry[2]
         raw_keys = torch.cat((prefix_keys, *(item[1] for item in history)), dim=1)
