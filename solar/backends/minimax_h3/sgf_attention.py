@@ -389,15 +389,15 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool
 
 
 def _fused() -> bool:
-    from .fused_prope import prope_fused_enabled
+    from .torch_prope import prope_fused_enabled
 
     return prope_fused_enabled()
 
 
 def _suffix(features, transform):
-    from .fused_prope import prope_fused_enabled, prope_project
+    if _fused():
+        from .fused_prope import prope_project
 
-    if prope_fused_enabled():
         return prope_project(features, transform.keywords["matrix"])
     return torch.cat((features[..., :96], transform(features[..., 96:128])), dim=-1)
 
@@ -569,9 +569,9 @@ def _rows_of(transform, start: int, stop: int):
 
 def _suffix_into(features, transform, out):
     """``out.copy_(_suffix(features, transform))``; the fused kernel writes ``out`` directly."""
-    from .fused_prope import _launch, prope_fused_enabled
+    if _fused() and not torch.is_grad_enabled():
+        from .fused_prope import _launch
 
-    if prope_fused_enabled() and not torch.is_grad_enabled():
         _launch(features, transform.keywords["matrix"], False, out=out)
     else:
         out.copy_(_suffix(features, transform))

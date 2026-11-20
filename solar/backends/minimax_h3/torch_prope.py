@@ -131,6 +131,20 @@ def prope_matrices(viewmats: Any, Ks: Any) -> tuple[Any, Any, Any]:
     return query_matrix, kv_matrix, projection.to(views.dtype)
 
 
+def prope_fused_enabled() -> bool:
+    """Whether ``SOLARWM_H3_PROPE_FUSED`` is on, without importing Triton when it is off."""
+
+    import os
+    import sys
+
+    module = sys.modules.get(f"{__package__}.fused_prope")
+    if module is None:
+        if os.environ.get("SOLARWM_H3_PROPE_FUSED", "0") != "1":
+            return False
+        from . import fused_prope as module
+    return module.prope_fused_enabled()
+
+
 def prope_apply(
     q: Any, k: Any, v: Any, matrices: tuple[Any, Any, Any]
 ) -> tuple[Any, Any, Any, Callable[[Any], Any]]:
@@ -140,10 +154,10 @@ def prope_apply(
 
     query_matrix, kv_matrix, output_matrix = matrices
 
-    from .fused_prope import prope_fused_enabled, prope_project
-
     if prope_fused_enabled():
         # SOLARWM_H3_PROPE_FUSED=1: one pass per tensor (see fused_prope).
+        from .fused_prope import prope_project
+
         return (
             prope_project(q, query_matrix),
             prope_project(k, kv_matrix),
