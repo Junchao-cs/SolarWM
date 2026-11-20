@@ -63,6 +63,8 @@ See [Install](#install) for setup, [Data](#data) for datasets, and
 
 ## 📰 News
 
+- **November 20, 2026:** We speed up **SolarWM-H3 training by 1.9–2.1×** across Stage0.5, Stage1, and Stage2 (1.85× / 2.12× / 1.88×) with matching training trajectories, thanks to [ResearchBoost-Agent](https://github.com/DAGroup-PKU/ResearchBoost-Agent).
+
 - **November 5, 2026:** We release **SolarWM-H3 Memory** ([Blog](https://solarx-team.github.io/SolarWM-H3-Memory) · [Weights](https://huggingface.co/junchaoh-cs/SolarWM-H3-33B/tree/main/SolarWM-h3-33B-memory-stage1-158f) · [Usage](docs/solar_wm/backends/minimax-h3.md#enable-memory)), improving long-term scene consistency and preserving visual details across revisits.
 
 - **October 22, 2026:** We release **SolarWM-H3 Realtime** ([Blog](https://solarx-team.github.io/SolarWM-H3-Realtime/)), enabling **low-latency interactive video generation** from an image and a prompt, with real-time camera control ([Code](deploy/solar_wm/)).
