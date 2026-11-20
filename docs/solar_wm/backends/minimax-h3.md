@@ -141,6 +141,11 @@ torchrun --nnodes="$NNODES" --node-rank="$NODE_RANK" --nproc-per-node=8 \
   --set runtime.output_dir="$SOLAR_OUTPUT_ROOT/h3-stage2-sgf-158f"
 ```
 
+## Faster training
+
+Opt-in environment switches cut the step time of all three stages by 1.85–2.12×
+without changing the recipes. See [MiniMax-H3 training speedups](minimax-h3-speedups.md).
+
 ## Resume training
 
 When resuming older checkpoints that used the previous default, add
