@@ -120,3 +120,22 @@ def test_realtime_attention_scope_accepts_sources_and_restores_hooks():
         assert sgf_rollout.H3RawKVCache is history.PackedHistoryCache
     assert sgf_attention.sgf_attention is original_attention
     assert sgf_rollout.H3RawKVCache is original_cache
+
+
+def test_realtime_attention_candidate_projects_the_native_sgf_forward():
+    import ast
+    import inspect
+
+    from deploy.solar_wm.backends.standard.acceleration.attention import backend
+
+    source = (H3 / "model.py").read_text()
+    lines = source.splitlines()
+    (native,) = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_sgf_attention_forward"
+    ]
+    native_source = "\n".join(lines[native.decorator_list[0].lineno - 1 : native.end_lineno])
+    assert backend.projected_source_matches(
+        native_source, inspect.getsource(backend._sgf_attention_forward)
+    )

@@ -41,7 +41,7 @@ def _sgf_attention_forward(attn, query, key, value, control):
         value = sequence_model_parallel_all_to_all_4D(value, scatter_dim=2, gather_dim=1)
 
     def segment_attention(q, k, v):
-        from flash_attn import flash_attn_func
+        from solar.backends.minimax_h3.fast_attention import attention
 
         if control.mode == "rollout" and q.shape[1] == 5 * int(control.layout.rows_per_video_frame):
             from torch.nn.functional import scaled_dot_product_attention
@@ -53,9 +53,7 @@ def _sgf_attention_forward(attn, query, key, value, control):
                 dropout_p=0.0,
                 is_causal=False,
             ).transpose(1, 2)
-        return flash_attn_func(
-            q.contiguous(), k.contiguous(), v.contiguous(), dropout_p=0.0, causal=False
-        )
+        return attention(q.contiguous(), k.contiguous(), v.contiguous())
 
     attended = attend_sgf(
         query,
@@ -85,6 +83,27 @@ if control.mode == "rollout" and q.shape[1] == 5 * int(control.layout.rows_per_v
 """
 
 
+def _relocate_package_import(source_import, relocated, module: str) -> None:
+    """Accept ``from solar.backends.minimax_h3.<module> import x`` for H3's ``from .<module>``."""
+    if not (isinstance(source_import, ast.ImportFrom)
+            and source_import.module == module and source_import.level == 1
+            and isinstance(relocated, ast.ImportFrom)
+            and relocated.module == "solar.backends.minimax_h3." + module
+            and relocated.level == 0 and len(source_import.names) == len(relocated.names) == 1
+            and ast.dump(source_import.names[0], include_attributes=False)
+            == ast.dump(relocated.names[0], include_attributes=False)):
+        raise RuntimeError("H3 package import relocation differs")
+    relocated.module, relocated.level = source_import.module, source_import.level
+
+
+def _segment_function(function):
+    segments = [node for node in ast.walk(function) if isinstance(node, ast.FunctionDef)
+                and node.name == "segment_attention"]
+    if len(segments) != 1 or not segments[0].body:
+        raise RuntimeError("H3 segment attention function differs")
+    return segments[0]
+
+
 def projected_source_matches(original_source: str, candidate_source: str) -> bool:
     original = ast.parse(textwrap.dedent(original_source))
     candidate = ast.parse(textwrap.dedent(candidate_source))
@@ -97,21 +116,13 @@ def projected_source_matches(original_source: str, candidate_source: str) -> boo
             or old.decorator_list[0].id != "staticmethod" or new.decorator_list):
         raise RuntimeError("H3 staticmethod ownership differs")
     old.decorator_list = []
-    source_import, relocated = old.body[0], new.body[0]
-    if not (isinstance(source_import, ast.ImportFrom)
-            and source_import.module == "sgf_attention" and source_import.level == 1
-            and isinstance(relocated, ast.ImportFrom)
-            and relocated.module == "solar.backends.minimax_h3.sgf_attention"
-            and relocated.level == 0 and len(source_import.names) == len(relocated.names) == 1
-            and ast.dump(source_import.names[0], include_attributes=False)
-            == ast.dump(relocated.names[0], include_attributes=False)):
-        raise RuntimeError("H3 package import relocation differs")
-    relocated.module, relocated.level = source_import.module, source_import.level
-    segments = [node for node in ast.walk(old) if isinstance(node, ast.FunctionDef)
-                and node.name == "segment_attention"]
-    if len(segments) != 1 or len(segments[0].body) != 2:
+    _relocate_package_import(old.body[0], new.body[0], "sgf_attention")
+    segment, candidate_segment = _segment_function(old), _segment_function(new)
+    if len(segment.body) != 2:
         raise RuntimeError("original H3 segment attention body differs")
-    segments[0].body.insert(1, ast.parse(textwrap.dedent(_VIDEO_BRANCH)).body[0])
+    # H3 routes segment attention through its attention switch (fast_attention).
+    _relocate_package_import(segment.body[0], candidate_segment.body[0], "fast_attention")
+    segment.body.insert(1, ast.parse(textwrap.dedent(_VIDEO_BRANCH)).body[0])
     return ast.dump(original, include_attributes=False) == ast.dump(candidate, include_attributes=False)
 
 
