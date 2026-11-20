@@ -37,9 +37,7 @@ def _bf16(x):
 
 
 @triton.jit
-def _rmsnorm_modulate_fwd(
-    X, W, SCALE, SHIFT, IDX, OUT, RSTD, N, inv_n, eps, BLOCK: tl.constexpr
-):
+def _rmsnorm_modulate_fwd(X, W, SCALE, SHIFT, IDX, OUT, RSTD, N, inv_n, eps, BLOCK: tl.constexpr):
     row = tl.program_id(0)
     cols = tl.arange(0, BLOCK)
     mask = cols < N
@@ -61,9 +59,7 @@ def _rmsnorm_modulate_fwd(
 
 
 @triton.jit
-def _rmsnorm_modulate_bwd(
-    DOUT, X, W, SCALE, IDX, RSTD, DX, N, BLOCK: tl.constexpr
-):
+def _rmsnorm_modulate_bwd(DOUT, X, W, SCALE, IDX, RSTD, DX, N, BLOCK: tl.constexpr):
     # Eager autograd of: n = bf16(xf * r); h = bf16(n * w); m = bf16(h * (1+s)); o = m + b
     # dm = do; dh = bf16(dm * (1+s)); dn = bf16(dh * w); dxf = dn * r + xf * dr, with
     # r = rsqrt(mean(xf^2) + eps): dr = -0.5 r^3 * d(mean)  and  d(mean)/dxf = 2 xf / N.
@@ -219,8 +215,20 @@ def gated_residual(residual, gate, idx, update):
 
 @triton.jit
 def _qk_norm_rope_fwd(
-    X, W, COS, SIN, OUT, RSTD, n_vec, heads, inv_d, eps,
-    D: tl.constexpr, R: tl.constexpr, HALF: tl.constexpr, VB: tl.constexpr
+    X,
+    W,
+    COS,
+    SIN,
+    OUT,
+    RSTD,
+    n_vec,
+    heads,
+    inv_d,
+    eps,
+    D: tl.constexpr,
+    R: tl.constexpr,
+    HALF: tl.constexpr,
+    VB: tl.constexpr,
 ):
     pid = tl.program_id(0)
     vec = pid * VB + tl.arange(0, VB)
@@ -233,7 +241,11 @@ def _qk_norm_rope_fwd(
     h = _bf16(_bf16(x * rstd[:, None]) * w[None, :])
     # partner column for rotate-half: d<HALF -> d+HALF (negated); HALF<=d<R -> d-HALF
     partner = tl.where(cols < HALF, cols + HALF, cols - HALF)
-    hp = tl.load(X + vec[:, None] * D + partner[None, :], mask=vmask[:, None] & (cols < R)[None, :], other=0.0).to(tl.float32)
+    hp = tl.load(
+        X + vec[:, None] * D + partner[None, :],
+        mask=vmask[:, None] & (cols < R)[None, :],
+        other=0.0,
+    ).to(tl.float32)
     hp = _bf16(_bf16(hp * rstd[:, None]) * tl.load(W + partner).to(tl.float32)[None, :])
     rot = tl.where((cols < HALF)[None, :], -hp, hp)
     row = vec // heads
@@ -248,8 +260,20 @@ def _qk_norm_rope_fwd(
 
 @triton.jit
 def _qk_norm_rope_bwd(
-    G, X, W, COS, SIN, RSTD, DX, n_vec, heads, inv_d,
-    D: tl.constexpr, R: tl.constexpr, HALF: tl.constexpr, VB: tl.constexpr
+    G,
+    X,
+    W,
+    COS,
+    SIN,
+    RSTD,
+    DX,
+    n_vec,
+    heads,
+    inv_d,
+    D: tl.constexpr,
+    R: tl.constexpr,
+    HALF: tl.constexpr,
+    VB: tl.constexpr,
 ):
     pid = tl.program_id(0)
     vec = pid * VB + tl.arange(0, VB)
@@ -288,8 +312,21 @@ class _QKNormRope(torch.autograd.Function):
         rstd = torch.empty(n_vec, device=x.device, dtype=torch.float32)
         vb = 16
         _qk_norm_rope_fwd[(triton.cdiv(n_vec, vb),)](
-            xc, weight, cos, sin, out, rstd, n_vec, h, _inv(d), eps,
-            D=d, R=r, HALF=r // 2, VB=vb, num_warps=4,
+            xc,
+            weight,
+            cos,
+            sin,
+            out,
+            rstd,
+            n_vec,
+            h,
+            _inv(d),
+            eps,
+            D=d,
+            R=r,
+            HALF=r // 2,
+            VB=vb,
+            num_warps=4,
         )
         ctx.save_for_backward(xc, weight, cos, sin, rstd)
         COUNTERS["qk_norm_rope"] += 1
@@ -305,8 +342,21 @@ class _QKNormRope(torch.autograd.Function):
         n_vec = b * s * h
         vb = 16
         _qk_norm_rope_bwd[(triton.cdiv(n_vec, vb),)](
-            g, xc, weight, cos, sin, rstd, dx, n_vec, h, _inv(d),
-            D=d, R=r, HALF=r // 2, VB=vb, num_warps=4,
+            g,
+            xc,
+            weight,
+            cos,
+            sin,
+            rstd,
+            dx,
+            n_vec,
+            h,
+            _inv(d),
+            D=d,
+            R=r,
+            HALF=r // 2,
+            VB=vb,
+            num_warps=4,
         )
         return dx, None, None, None, None
 
@@ -371,8 +421,21 @@ class _QKNorm(torch.autograd.Function):
         rstd = torch.empty(n_vec, device=x.device, dtype=torch.float32)
         vb = 16
         _qk_norm_rope_fwd[(triton.cdiv(n_vec, vb),)](
-            xc, weight, xc, xc, out, rstd, n_vec, h, _inv(d), eps,
-            D=d, R=0, HALF=0, VB=vb, num_warps=4,
+            xc,
+            weight,
+            xc,
+            xc,
+            out,
+            rstd,
+            n_vec,
+            h,
+            _inv(d),
+            eps,
+            D=d,
+            R=0,
+            HALF=0,
+            VB=vb,
+            num_warps=4,
         )
         ctx.save_for_backward(xc, weight, rstd)
         COUNTERS["qk_norm"] = COUNTERS.get("qk_norm", 0) + 1
@@ -387,13 +450,33 @@ class _QKNorm(torch.autograd.Function):
         n_vec = b * s * h
         vb = 16
         _qk_norm_rope_bwd[(triton.cdiv(n_vec, vb),)](
-            g, xc, weight, xc, xc, rstd, dx, n_vec, h, _inv(d),
-            D=d, R=0, HALF=0, VB=vb, num_warps=4,
+            g,
+            xc,
+            weight,
+            xc,
+            xc,
+            rstd,
+            dx,
+            n_vec,
+            h,
+            _inv(d),
+            D=d,
+            R=0,
+            HALF=0,
+            VB=vb,
+            num_warps=4,
         )
         return dx, None, None
 
 
-__all__ = ["COUNTERS", "fused_enabled", "gated_residual", "qk_norm", "qk_norm_rope", "rmsnorm_modulate"]
+__all__ = [
+    "COUNTERS",
+    "fused_enabled",
+    "gated_residual",
+    "qk_norm",
+    "qk_norm_rope",
+    "rmsnorm_modulate",
+]
 
 
 # ----------------------------------------------------------------------------------- SwiGLU

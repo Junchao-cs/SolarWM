@@ -30,7 +30,7 @@ class _SGFForwardPlan:
     forward's control (layout, cameras, chunk, rotaries), never on a layer's q/k/v.
     """
 
-    __slots__ = ("segments", "key")
+    __slots__ = ("key", "segments")
 
     def __init__(self) -> None:
         self.segments = None
@@ -93,7 +93,7 @@ class H3SGFPrefixKV:
     chunk's rows only ('suffix') and reads them. A plain object: passed by reference.
     """
 
-    __slots__ = ("layers", "mode", "window", "storage")
+    __slots__ = ("layers", "mode", "storage", "window")
 
     def __init__(self) -> None:
         self.layers: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
@@ -120,9 +120,7 @@ KV_WINDOW_COUNTERS = {"built": 0, "reused": 0}
 
 
 def sgf_prefix_reuse_enabled() -> bool:
-    from .stage_scope import n1_active
-
-    return _PREFIX_REUSE and _PLAN_ENABLED and n1_active()
+    return _PREFIX_REUSE and _PLAN_ENABLED
 
 
 def prepare_sgf_rotaries(control: H3SGFAttention, rope):
@@ -347,7 +345,9 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool
         if kind == "condition":
             rot = _slice_rotary(control.prefix_rotary, 0, condition_rows)
             cam = (prefix_view[:, :condition_rows], prefix_K[:, :condition_rows])
-            segments.append((kind, qstart, qstop, index, cast(rot), cast(rot), transforms(cam, cam)))
+            segments.append(
+                (kind, qstart, qstop, index, cast(rot), cast(rot), transforms(cam, cam))
+            )
         elif kind == "audio":
             qrot = _slice_rotary(control.prefix_rotary, condition_rows, prefix)
             qcam = (prefix_view[:, condition_rows:prefix], prefix_K[:, condition_rows:prefix])
@@ -386,12 +386,6 @@ def _build_plan(control: H3SGFAttention, dtype, device, batch: int, suffix: bool
                 )
             )
     return tuple(segments)
-
-
-def _n1() -> bool:
-    from .stage_scope import n1_active
-
-    return n1_active()
 
 
 def _fused() -> bool:
@@ -440,9 +434,9 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
             key_ = rope_prope(key_, kr[0], kr[1], kv_matrix)
             value = prope_project(value.transpose(1, 2), kv_matrix).transpose(1, 2)
             output = attend(query, key_, value)
-            return prope_project(
-                output.transpose(1, 2), apply_output.keywords["matrix"]
-            ).transpose(1, 2)
+            return prope_project(output.transpose(1, 2), apply_output.keywords["matrix"]).transpose(
+                1, 2
+            )
         query = apply_rotary(query, *qr)
         key_ = apply_rotary(key_, *kr)
         query, key_, value = (
@@ -455,14 +449,27 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
 
     if suffix and _KV_WINDOW and control.mode == "rollout" and len(plan.segments) == 1:
         return _windowed_rollout_attention(
-            q, k, v, control=control, layer=layer, apply_rotary=apply_rotary, attend=attend,
-            prefix=prefix, rows=rows,
+            q,
+            k,
+            v,
+            control=control,
+            layer=layer,
+            apply_rotary=apply_rotary,
+            attend=attend,
+            prefix=prefix,
+            rows=rows,
         )
 
-    if _PIECES and control.mode == "replay" and torch.is_grad_enabled() and _n1():
+    if _PIECES and control.mode == "replay" and torch.is_grad_enabled():
         return _pieced_replay_attention(
-            q, k, v, plan=plan, calculate=calculate, condition_rows=condition_rows,
-            prefix=prefix, chunk_rows=chunk_rows,
+            q,
+            k,
+            v,
+            plan=plan,
+            calculate=calculate,
+            condition_rows=condition_rows,
+            prefix=prefix,
+            chunk_rows=chunk_rows,
         )
 
     outputs = []
@@ -470,7 +477,12 @@ def _planned_sgf_attention(q, k, v, *, control, layer, apply_rotary, attend):
         if kind == "condition":
             outputs.append(
                 calculate(
-                    q[:, :condition_rows], k[:, :condition_rows], v[:, :condition_rows], qr, kr, prope
+                    q[:, :condition_rows],
+                    k[:, :condition_rows],
+                    v[:, :condition_rows],
+                    qr,
+                    kr,
+                    prope,
                 )
             )
             continue
@@ -611,8 +623,9 @@ def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend
         if _fused():
             from .fused_prope import rope_prope
 
-            rope_prope(raw_keys, kr[0][:kept], kr[1][:kept], kept_kv.keywords["matrix"],
-                       out=keys[:, :kept])
+            rope_prope(
+                raw_keys, kr[0][:kept], kr[1][:kept], kept_kv.keywords["matrix"], out=keys[:, :kept]
+            )
         else:
             rotated = apply_rotary(raw_keys, kr[0][:kept], kr[1][:kept])
             _suffix_into(rotated.transpose(1, 2), kept_kv, keys[:, :kept].transpose(1, 2))
@@ -630,8 +643,9 @@ def _windowed_rollout_attention(q, k, v, *, control, layer, apply_rotary, attend
     if _fused():
         from .fused_prope import rope_prope
 
-        rope_prope(k, kr[0][kept:], kr[1][kept:], chunk_kv.keywords["matrix"],
-                   out=keys[:, kept:total])
+        rope_prope(
+            k, kr[0][kept:], kr[1][kept:], chunk_kv.keywords["matrix"], out=keys[:, kept:total]
+        )
         query = rope_prope(q, qr[0], qr[1], apply_q.keywords["matrix"])
     else:
         rotated = apply_rotary(k, kr[0][kept:], kr[1][kept:])

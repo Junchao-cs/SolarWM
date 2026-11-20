@@ -1,6 +1,7 @@
-"""Fused camera-PRoPE projection of the head dimensions ``[96:128)`` (switch ``SOLARWM_H3_PROPE_FUSED=1``).
+"""Fused camera-PRoPE projection of the head dimensions ``[96:128)``.
 
-Upstream (``torch_prope``) computes ``cat(x[..., :96], einsum('bsij,bhspj->bhspi', M, x[..., 96:].view(..., 8, 4)))``:
+Switch: ``SOLARWM_H3_PROPE_FUSED=1``. Upstream (``torch_prope``) computes
+``cat(x[..., :96], einsum('bsij,bhspj->bhspi', M, x[..., 96:].view(..., 8, 4)))``:
 a slice copy, permute copies, a batched 4x4 GEMM and a full-width cat, each a pass over the
 tensor. This kernel reads every row once and writes the result once: the first 96 channels
 are copied, each of the eight 4-vectors of the last 32 channels is multiplied by the row's
@@ -24,18 +25,24 @@ COUNTERS = {"fused": 0, "fused_backward": 0}
 
 
 def prope_fused_enabled() -> bool:
-    from .stage_scope import n1_active
-
-    return _ENABLED and n1_active()
+    return _ENABLED
 
 
 @triton.jit
 def _prope_kernel(
-    X, M, OUT,
-    S, H,
-    sxb, sxh, sxs,
-    smb, sms,
-    sob, soh, sos,
+    X,
+    M,
+    OUT,
+    S,
+    H,
+    sxb,
+    sxh,
+    sxs,
+    smb,
+    sms,
+    sob,
+    soh,
+    sos,
     TRANSPOSE: tl.constexpr,
     BLOCK_S: tl.constexpr,
 ):
@@ -78,8 +85,10 @@ def _prope_kernel(
         tl.store(obase + i, y.to(OUT.dtype.element_ty), mask=rmask[:, None])
 
 
-def _launch(x: torch.Tensor, matrix: torch.Tensor, transpose: bool, out: torch.Tensor | None = None):
-    """``x`` is ``[B, H, S, 128]`` (any strides with unit channel stride), ``matrix`` ``[B|1, S, 4, 4]``."""
+def _launch(
+    x: torch.Tensor, matrix: torch.Tensor, transpose: bool, out: torch.Tensor | None = None
+):
+    """``x`` is ``[B, H, S, 128]`` (unit channel stride), ``matrix`` ``[B|1, S, 4, 4]``."""
     if x.stride(-1) != 1:
         x = x.contiguous()
     batch, heads, sequence, width = x.shape
@@ -94,7 +103,9 @@ def _launch(x: torch.Tensor, matrix: torch.Tensor, transpose: bool, out: torch.T
     if out is None:
         # BSHD memory, returned as the BHSD view (the layout torch_prope's cat produces after
         # the callers' transposes is irrelevant to values; attention takes either).
-        out = torch.empty((batch, sequence, heads, width), device=x.device, dtype=x.dtype).transpose(1, 2)
+        out = torch.empty(
+            (batch, sequence, heads, width), device=x.device, dtype=x.dtype
+        ).transpose(1, 2)
     smb = 0 if matrix.shape[0] == 1 else matrix.stride(0)
     block = 32
     grid = (triton.cdiv(sequence, block), batch * heads)
@@ -103,11 +114,19 @@ def _launch(x: torch.Tensor, matrix: torch.Tensor, transpose: bool, out: torch.T
         block = 64
         grid = (triton.cdiv(sequence, block), batch * heads)
     kernel[grid](
-        x, matrix, out,
-        sequence, heads,
-        x.stride(0), x.stride(1), x.stride(2),
-        smb, matrix.stride(1),
-        out.stride(0), out.stride(1), out.stride(2),
+        x,
+        matrix,
+        out,
+        sequence,
+        heads,
+        x.stride(0),
+        x.stride(1),
+        x.stride(2),
+        smb,
+        matrix.stride(1),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
         TRANSPOSE=transpose,
         BLOCK_S=block,
         num_warps=4,
@@ -136,8 +155,6 @@ def prope_project(x: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
     return _FusedProjection.apply(x, matrix.detach())
 
 
-
-
 # ------------------------------------------------------------------ SGF rotary + PRoPE in one pass
 #
 # ``_suffix(_apply_rotary_emb(x, cos, sin).transpose(1, 2), project(M)).transpose(1, 2)`` for
@@ -153,12 +170,22 @@ def _bf16r(x):
 
 @triton.jit
 def _rope_prope_kernel(
-    X, COS, SIN, M, OUT,
-    S, H,
-    sxb, sxs, sxh,
+    X,
+    COS,
+    SIN,
+    M,
+    OUT,
+    S,
+    H,
+    sxb,
+    sxs,
+    sxh,
     scs,
-    smb, sms,
-    sob, sos, soh,
+    smb,
+    sms,
+    sob,
+    sos,
+    soh,
     BACKWARD: tl.constexpr,
     BLOCK_S: tl.constexpr,
 ):
@@ -177,9 +204,13 @@ def _rope_prope_kernel(
     x1 = tl.load(x_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32)
     x2 = tl.load(x_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
     cos1 = _bf16r(tl.load(COS + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
-    cos2 = _bf16r(tl.load(COS + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    cos2 = _bf16r(
+        tl.load(COS + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    )
     sin1 = _bf16r(tl.load(SIN + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
-    sin2 = _bf16r(tl.load(SIN + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    sin2 = _bf16r(
+        tl.load(SIN + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    )
     if BACKWARD:
         # y1 = x1*c1 - x2*s1 ; y2 = x2*c2 + x1*s2  =>  dx1 = g1*c1 + g2*s2 ; dx2 = g2*c2 - g1*s1
         y1 = _bf16r(_bf16r(x1 * cos1) + _bf16r(x2 * sin2))
@@ -240,12 +271,22 @@ def _rope_prope_launch(x, cos, sin, matrix, backward, out=None):
         block = 64
         grid = (triton.cdiv(sequence, block), batch * heads)
     kernel[grid](
-        x, cos, sin, matrix, out,
-        sequence, heads,
-        x.stride(0), x.stride(1), x.stride(2),
+        x,
+        cos,
+        sin,
+        matrix,
+        out,
+        sequence,
+        heads,
+        x.stride(0),
+        x.stride(1),
+        x.stride(2),
         cos.stride(0),
-        smb, matrix.stride(1),
-        out.stride(0), out.stride(1), out.stride(2),
+        smb,
+        matrix.stride(1),
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
         BACKWARD=backward,
         BLOCK_S=block,
         num_warps=4,
@@ -267,7 +308,9 @@ class _RopeProject(torch.autograd.Function):
         return _rope_prope_launch(grad, cos, sin, matrix, True), None, None, None
 
 
-def rope_prope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, matrix: torch.Tensor, out=None):
+def rope_prope(
+    x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, matrix: torch.Tensor, out=None
+):
     """BSHD ``x`` -> BSHD result of MM-RoPE on [0, 96) and the camera projection on [96, 128)."""
     if cos.requires_grad or sin.requires_grad or matrix.requires_grad:
         raise RuntimeError("SGF rope+PRoPE tables must not require gradients")
@@ -279,8 +322,7 @@ def rope_prope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, matrix: to
     return _RopeProject.apply(x, cos, sin, matrix)
 
 
-
-# ------------------------------------------------------------- coalesced variants (SOLARWM_H3_PROPE_V2=1)
+# ------------------------------------------------------ coalesced variants (SOLARWM_H3_PROPE_V2=1)
 #
 # Same arithmetic as the kernels above (the same four-term FP32 expression per output, so the
 # results are bitwise equal to them), but the 32 camera channels of a row are loaded and stored
@@ -340,11 +382,19 @@ def _project32(t, m_row, rmask, TRANSPOSE: tl.constexpr, BLOCK_S: tl.constexpr):
 
 @triton.jit
 def _prope_kernel_v2(
-    X, M, OUT,
-    S, H,
-    sxb, sxh, sxs,
-    smb, sms,
-    sob, soh, sos,
+    X,
+    M,
+    OUT,
+    S,
+    H,
+    sxb,
+    sxh,
+    sxs,
+    smb,
+    sms,
+    sob,
+    soh,
+    sos,
     TRANSPOSE: tl.constexpr,
     BLOCK_S: tl.constexpr,
 ):
@@ -368,12 +418,22 @@ def _prope_kernel_v2(
 
 @triton.jit
 def _rope_prope_kernel_v2(
-    X, COS, SIN, M, OUT,
-    S, H,
-    sxb, sxs, sxh,
+    X,
+    COS,
+    SIN,
+    M,
+    OUT,
+    S,
+    H,
+    sxb,
+    sxs,
+    sxh,
     scs,
-    smb, sms,
-    sob, sos, soh,
+    smb,
+    sms,
+    sob,
+    sos,
+    soh,
     BACKWARD: tl.constexpr,
     BLOCK_S: tl.constexpr,
 ):
@@ -391,9 +451,13 @@ def _rope_prope_kernel_v2(
     x1 = tl.load(x_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32)
     x2 = tl.load(x_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
     cos1 = _bf16r(tl.load(COS + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
-    cos2 = _bf16r(tl.load(COS + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    cos2 = _bf16r(
+        tl.load(COS + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    )
     sin1 = _bf16r(tl.load(SIN + c_row[:, None] + c48[None, :], mask=cm, other=0.0).to(tl.float32))
-    sin2 = _bf16r(tl.load(SIN + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32))
+    sin2 = _bf16r(
+        tl.load(SIN + c_row[:, None] + 48 + c48[None, :], mask=cm, other=0.0).to(tl.float32)
+    )
     if BACKWARD:
         y1 = _bf16r(_bf16r(x1 * cos1) + _bf16r(x2 * sin2))
         y2 = _bf16r(_bf16r(x2 * cos2) - _bf16r(x1 * sin1))

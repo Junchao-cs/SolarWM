@@ -104,8 +104,6 @@ def prope_qkv(
 ) -> tuple[Any, Any, Any, Callable[[Any], Any]]:
     """Apply logd4 camera PRoPE only to H3 head dimensions ``[96:128)``."""
 
-    import torch
-
     if q.ndim != 4 or q.shape != k.shape or q.shape != v.shape:
         raise ValueError("q/k/v must be equal [B,H,S,D] tensors")
     batch, _heads, sequence, head_dim = q.shape

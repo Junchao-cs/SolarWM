@@ -114,8 +114,9 @@ def wrap_h3_fsdp(
             checkpoint_wrapper_fn=lambda module: block_checkpoint_wrapper(
                 module, save_attention=id(module) in keep
             ),
-            check_fn=lambda module: isinstance(module, transformer_block_cls)
-            and id(module) not in plain,
+            check_fn=lambda module: (
+                isinstance(module, transformer_block_cls) and id(module) not in plain
+            ),
         )
         blocks = sum(isinstance(module, transformer_block_cls) for module in wrapped.modules())
         if uncheckpointed_blocks and blocks != 50:

@@ -1,4 +1,7 @@
-"""Triton block-transpose copy for the SP all-to-all packing (SOLARWM_H3_A2A_COPY=1, see distributed.py)."""
+"""Triton block-transpose copy for the SP all-to-all packing.
+
+Used by ``distributed.py`` under ``SOLARWM_H3_A2A_COPY=1``.
+"""
 
 from __future__ import annotations
 

@@ -33,6 +33,8 @@ except (ImportError, ModuleNotFoundError) as exc:  # pragma: no cover - dependen
         "MiniMaxH3Transformer3DModel (and its matching torch dependency)."
     ) from exc
 
+from . import fast_attention as _fast_attention
+from . import w6_attention as _w6
 from .anyflow_conditioning import H3AnyFlowConditioningMixin
 from .camera import fixed_intrinsics_like
 from .diffusers_compat import patch_minimax_h3_parameter_dtype
@@ -54,8 +56,6 @@ from .distributed import (
 from .distributed import (
     state as get_sequence_parallel_state,
 )
-from . import fast_attention as _fast_attention
-from . import w6_attention as _w6
 from .segmented_attention import H3SegmentPlan, segment_attention
 
 get_parameter_dtype = patch_minimax_h3_parameter_dtype()
@@ -88,25 +88,14 @@ def _fused_block_forward(
 
 
 _FUSED = __import__("os").environ.get("SOLARWM_H3_FUSED", "0") == "1"
-_ORIGINAL_BLOCK_FORWARD = MiniMaxH3TransformerBlock.forward
-
-
-def _scoped_block_forward(self, *args, **kwargs):
-    from .stage_scope import n1_active
-
-    if n1_active():
-        return _fused_block_forward(self, *args, **kwargs)
-    return _ORIGINAL_BLOCK_FORWARD(self, *args, **kwargs)
 
 
 def _fused_active() -> bool:
-    from .stage_scope import n1_active
-
-    return _FUSED and n1_active()
+    return _FUSED
 
 
 if _FUSED:
-    MiniMaxH3TransformerBlock.forward = _scoped_block_forward
+    MiniMaxH3TransformerBlock.forward = _fused_block_forward
 if __import__("os").environ.get("SOLARWM_H3_SWIGLU_FUSED", "0") == "1":
     from . import fused_ops as _fused_ops  # noqa: F401  (patches diffusers SwiGLU.forward)
 
@@ -195,7 +184,7 @@ class H3AttentionControl:
 class _PropePlan:
     """Per-forward memo of the PRoPE camera matrices (plain object: passed by reference)."""
 
-    __slots__ = ("matrices", "key")
+    __slots__ = ("key", "matrices")
 
     def __init__(self) -> None:
         self.matrices = None
@@ -485,7 +474,9 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
 
                 # Same checks/shape validation as prope_qkv, then the matrices once.
                 if tuple(full_viewmats.shape) != (batch, sequence, 4, 4) or query.shape[-1] != 128:
-                    raise ValueError("H3 PRoPE plan requires token-aligned cameras and head_dim=128")
+                    raise ValueError(
+                        "H3 PRoPE plan requires token-aligned cameras and head_dim=128"
+                    )
                 prope_plan.matrices = prope_matrices(full_viewmats, full_intrinsics)
                 prope_plan.key = (query.shape[:2], query.dtype, query.device)
                 PROPE_PLAN_COUNTERS["built"] += 1
@@ -629,9 +620,7 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
         elif isinstance(attention_mask, _w6.H3W6Plan):
             attended = _w6.w6_attention(query, key, value, attention_mask)
         elif isinstance(attention_mask, _w6.H3W6Run):
-            attended = _w6.w6_run_attention(
-                query, key, value, attention_mask, attn.h3_layer_index
-            )
+            attended = _w6.w6_run_attention(query, key, value, attention_mask, attn.h3_layer_index)
         elif _is_flex_block_mask(attention_mask):
             expected_shape = (int(query.shape[1]), int(key.shape[1]))
             if tuple(attention_mask.seq_lengths) != expected_shape:
@@ -767,12 +756,16 @@ class SolarMiniMaxH3Transformer3DModel(H3AnyFlowConditioningMixin, MiniMaxH3Tran
             if isinstance(attention_mask, _w6.H3W6Run) and attention_mask.mode == "suffix"
             else None
         )
-        sgf_prefix = getattr(sgf_attention, "prefix_kv", None) if sgf_attention is not None else None
+        sgf_prefix = (
+            getattr(sgf_attention, "prefix_kv", None) if sgf_attention is not None else None
+        )
         if sgf_prefix is not None and sgf_prefix.mode == "suffix":
             suffix_run = sgf_prefix
             if int(hidden_states.shape[1]) != sequence_length:
                 raise ValueError("H3 SGF suffix evaluation expects exactly the chunk rows")
-        elif suffix_run is not None and int(hidden_states.shape[1]) != suffix_run.suffix.suffix_rows:
+        elif (
+            suffix_run is not None and int(hidden_states.shape[1]) != suffix_run.suffix.suffix_rows
+        ):
             raise ValueError("H3 W6 suffix evaluation expects exactly the noisy rows")
         if suffix_run is not None:
             # Noisy rows only: every input of the kept prefix is already reflected in

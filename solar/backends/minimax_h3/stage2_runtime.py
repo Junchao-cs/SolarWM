@@ -17,7 +17,6 @@ from .sgf_rollout import h3_sgf_replay
 from .stage2 import H3SGFCore
 from .torch_flow import predict_clean_sample
 
-
 _CRITIC_CUDNN = __import__("os").environ.get("SOLARWM_H3_SGF_CRITIC_CUDNN", "0") == "1"
 
 

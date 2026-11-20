@@ -396,7 +396,6 @@ def seed_lora_from_released(
     return len(pairs)
 
 
-
 _FAST_FORWARD_COUNTERS = {"fast": 0, "peft": 0}
 
 
@@ -420,13 +419,7 @@ def install_fast_lora_forward() -> None:
     original = linear.forward
 
     def forward(self, x, *args, **kwargs):
-        if (
-            args
-            or kwargs
-            or self.disable_adapters
-            or self.merged
-            or len(self.active_adapters) != 1
-        ):
+        if args or kwargs or self.disable_adapters or self.merged or len(self.active_adapters) != 1:
             _FAST_FORWARD_COUNTERS["peft"] += 1
             return original(self, x, *args, **kwargs)
         name = self.active_adapters[0]
@@ -448,7 +441,12 @@ def install_fast_lora_forward() -> None:
             return original(self, x, *args, **kwargs)
         _FAST_FORWARD_COUNTERS["fast"] += 1
         lora_B = self.lora_B[name]
-        if _ADDMM and _n1_active() and lora_B.bias is None and result.dim() >= 2 and result.dtype == lora_B.weight.dtype:
+        if (
+            _ADDMM
+            and lora_B.bias is None
+            and result.dim() >= 2
+            and result.dtype == lora_B.weight.dtype
+        ):
             # SOLARWM_H3_LORA_ADDMM=1: the up-projection accumulates onto the base output in
             # the GEMM epilogue (FP32 accumulation, one BF16 rounding instead of two).
             _FAST_FORWARD_COUNTERS["addmm"] = _FAST_FORWARD_COUNTERS.get("addmm", 0) + 1
@@ -468,11 +466,6 @@ def install_fast_lora_forward() -> None:
 
 _ADDMM = __import__("os").environ.get("SOLARWM_H3_LORA_ADDMM", "0") == "1"
 
-
-def _n1_active() -> bool:
-    from .stage_scope import n1_active
-
-    return n1_active()
 
 if __import__("os").environ.get("SOLARWM_H3_LORA_FAST", "0") == "1":
     install_fast_lora_forward()

@@ -111,15 +111,11 @@ def h3_student_forward(
             return_dict=False,
             position_ids=layout.position_ids[start:],
             token_tags=layout.token_tags[start:],
-            video_indices=torch.arange(
-                int(layout.sequence_length) - start, device=noisy.device
-            ),
+            video_indices=torch.arange(int(layout.sequence_length) - start, device=noisy.device),
             audio_indices=layout.audio_indices[:0],
             text_indices=layout.text_indices[:0],
         )
-        velocity = unpatchify_video(
-            prediction, frames, inputs.latent_height, inputs.latent_width
-        )
+        velocity = unpatchify_video(prediction, frames, inputs.latent_height, inputs.latent_width)
         return predict_clean_sample(noisy, velocity, timestep)
     video_parts = [inputs.anchor_rows]
     if clean is not None:
@@ -263,9 +259,7 @@ def h3_sgf_rollout(
                     progress(window.chunk_index + 1)
         if finite_flags and not bool(torch.stack(finite_flags).all()):
             bad = int((~torch.stack(finite_flags)).nonzero()[0, 0])
-            raise FloatingPointError(
-                f"non-finite H3 SGF chunk={bad // 4}, denoise={bad % 4}"
-            )
+            raise FloatingPointError(f"non-finite H3 SGF chunk={bad // 4}, denoise={bad % 4}")
         return H3SGFRollout(
             torch.cat(committed, dim=2),
             torch.cat(noisy_exits, dim=2),

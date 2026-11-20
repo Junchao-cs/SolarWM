@@ -198,8 +198,6 @@ def w6_attention(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, pl
     return _W6Attention.apply(query, key, value, plan)
 
 
-
-
 # --------------------------------------------------------------------------- prefix reuse
 #
 # In the W6 document the condition, audio and clean rows never attend to noisy rows,
@@ -221,12 +219,12 @@ class H3W6Suffix:
     """Static per-layout description of the noisy-row (suffix) document."""
 
     __slots__ = (
-        "prefix_rows",
-        "kept_rows",
-        "suffix_rows",
-        "segments",
         "camera_indices",
         "camera_select",
+        "kept_rows",
+        "prefix_rows",
+        "segments",
+        "suffix_rows",
         "video_indices",
     )
 
@@ -272,7 +270,7 @@ class H3W6Run:
     """A W6 attention mask for one model evaluation: ``capture`` (full document, keep
     the prefix) or ``suffix`` (noisy rows only, read the kept prefix)."""
 
-    __slots__ = ("plan", "suffix", "cache", "mode")
+    __slots__ = ("cache", "mode", "plan", "suffix")
 
     def __init__(self, plan: H3W6Plan, suffix: H3W6Suffix, cache: H3W6PrefixCache, mode: str):
         if mode not in {"capture", "suffix"}:

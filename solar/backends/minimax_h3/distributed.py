@@ -318,9 +318,9 @@ def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], cu
         local_heads = heads // world
         # [S_loc, world, H/world, D] -> rank-major send rows [world * S_loc, H/world, D].
         if _A2A_COPY and input_.is_contiguous():
-            send = _block_transpose(
-                input_, local_sequence, world, local_heads * head_dim
-            ).reshape(world * local_sequence, local_heads, head_dim)
+            send = _block_transpose(input_, local_sequence, world, local_heads * head_dim).reshape(
+                world * local_sequence, local_heads, head_dim
+            )
         else:
             send = (
                 input_.reshape(local_sequence, world, local_heads, head_dim)
@@ -356,9 +356,9 @@ def _all_to_all_fast(input_: Any, scatter_dim: int, lengths: tuple[int, ...], cu
         group=current.sp_group,
     )
     if _A2A_COPY:
-        return _block_transpose(
-            received, world, local_sequence, local_heads * head_dim
-        ).reshape(1, local_sequence, world * local_heads, head_dim)
+        return _block_transpose(received, world, local_sequence, local_heads * head_dim).reshape(
+            1, local_sequence, world * local_heads, head_dim
+        )
     return (
         received.reshape(world, local_sequence, local_heads, head_dim)
         .transpose(0, 1)
@@ -562,14 +562,6 @@ class H3PackedSequenceShard:
     sequence_lengths: tuple[int, ...]
 
 
-import os as _os
-
-# SOLARWM_H3_SP_LENGTH_CACHE=1: check each distinct packed SP layout once per
-# process (an all_gather plus host sync) instead of on every model forward.
-_VERIFIED_LENGTHS_ENABLED = _os.environ.get("SOLARWM_H3_SP_LENGTH_CACHE", "0") == "1"
-_VERIFIED_LENGTHS: set[tuple[int, ...]] = set()
-
-
 def shard_stage0p5_packed_sequence(
     *,
     hidden_states: Any,
@@ -601,16 +593,8 @@ def shard_stage0p5_packed_sequence(
         - contiguous_packed_bounds(total, sp_size=get_sp_size(), sp_rank=rank)[0]
         for rank in range(get_sp_size())
     )
-    if _VERIFIED_LENGTHS_ENABLED and lengths in _VERIFIED_LENGTHS:
-        # The SP group already agreed on this exact layout (a pure function of the
-        # packed length); every rank skips the same re-check, so collective counts
-        # stay aligned. Only the registration it would perform remains.
-        state().sequence_lengths = lengths
-    else:
-        if register_sequence_length(stop - start) != lengths:
-            raise RuntimeError("SP ranks disagree on packed sequence lengths")
-        if _VERIFIED_LENGTHS_ENABLED:
-            _VERIFIED_LENGTHS.add(lengths)
+    if register_sequence_length(stop - start) != lengths:
+        raise RuntimeError("SP ranks disagree on packed sequence lengths")
 
     controls = (prope_token_indices, prope_frame_ids, camera_viewmats, camera_K)
     if all(value is None for value in controls):
