@@ -13,6 +13,15 @@ from .layout import build_stage1_layout, patchify_video
 from .stage0p5 import H3Stage0p5Core
 from .torch_layout import build_stage1_row_time_pairs
 from .torch_mask import build_stage1_w6_block_mask
+from .w6_attention import (
+    H3W6Plan,
+    H3W6PrefixCache,
+    H3W6Run,
+    H3W6Suffix,
+    build_w6_plan,
+    prefix_reuse_enabled,
+    segments_enabled,
+)
 
 
 class H3Stage1Core(H3Stage0p5Core):
@@ -113,16 +122,58 @@ class H3Stage1Core(H3Stage0p5Core):
         clean_rows, noise_rows = patchify_video(clean), patchify_video(noise)
         key = (layout.sequence_length, layout.rows_per_video_frame, layout.window_chunks)
         if key not in self._masks:
-            self._masks[key] = build_stage1_w6_block_mask(
-                layout,
-                batch_size=1,
-                num_heads=None,
-                device=self.device,
-            )
+            if segments_enabled():
+                self._masks[key] = build_w6_plan(layout)
+            else:
+                self._masks[key] = build_stage1_w6_block_mask(
+                    layout,
+                    batch_size=1,
+                    num_heads=None,
+                    device=self.device,
+                )
             while len(self._masks) > 4:
                 self._masks.popitem(last=False)
         self._masks.move_to_end(key)
         mask = self._masks[key]
+        reuse = None
+        if prefix_reuse_enabled() and isinstance(mask, H3W6Plan):
+            suffix_key = ("suffix", *key)
+            if suffix_key not in self._masks:
+                self._masks[suffix_key] = H3W6Suffix(mask, layout)
+            reuse = {"suffix": self._masks[suffix_key], "cache": H3W6PrefixCache(), "calls": 0}
+
+        def suffix_velocity(noisy: Any, times: Any, targets: Any, indices: Any, run: Any) -> Any:
+            suffix = run.suffix
+            prefix = suffix.prefix_rows
+            if frame_ids is None:
+                suffix_views = views.index_select(1, suffix.camera_select)
+                suffix_intrinsics = intrinsics.index_select(1, suffix.camera_select)
+                suffix_frames = None
+            else:
+                suffix_views, suffix_intrinsics = views, intrinsics
+                suffix_frames = frame_ids.index_select(0, suffix.camera_select)
+            prediction, _ = self.model(
+                hidden_states=noisy,
+                audio_hidden_states=audio,
+                encoder_hidden_states=prompt,
+                timestep=times,
+                r_timestep=targets,
+                timestep_indices=indices[prefix:],
+                attention_mask=run,
+                fused_prope=True,
+                prope_token_indices=suffix.camera_indices,
+                prope_frame_ids=suffix_frames,
+                cam_viewmats=suffix_views,
+                cam_K=suffix_intrinsics,
+                packed_sequence_parallel=self._sp_enabled(),
+                return_dict=False,
+                position_ids=layout.position_ids[prefix:],
+                token_tags=layout.token_tags[prefix:],
+                video_indices=suffix.video_indices,
+                audio_indices=layout.audio_indices[:0],
+                text_indices=layout.text_indices[:0],
+            )
+            return prediction
 
         def velocity(noisy: Any, video_t: Any, video_r: Any) -> Any:
             times, targets, indices = build_stage1_row_time_pairs(
@@ -133,6 +184,18 @@ class H3Stage1Core(H3Stage0p5Core):
                 keyframe_timestep=0.999,
                 device=self.device,
             )
+            run_mask = mask
+            if reuse is not None and not torch.is_grad_enabled():
+                # Detached AnyFlow targets: the first keeps the prefix keys/values,
+                # the next two evaluate only the noisy rows against them.
+                call = reuse["calls"]
+                reuse["calls"] += 1
+                mode = "capture" if call == 0 else "suffix"
+                run_mask = H3W6Run(mask, reuse["suffix"], reuse["cache"], mode)
+                if mode == "suffix":
+                    return suffix_velocity(noisy, times, targets, indices, run_mask)
+            elif reuse is not None:
+                reuse["cache"].layers.clear()
             prediction, _ = self.model(
                 hidden_states=torch.cat((anchor_rows, clean_rows, noisy), dim=1),
                 audio_hidden_states=audio,
@@ -140,7 +203,7 @@ class H3Stage1Core(H3Stage0p5Core):
                 timestep=times,
                 r_timestep=targets,
                 timestep_indices=indices,
-                attention_mask=mask,
+                attention_mask=run_mask,
                 fused_prope=True,
                 prope_token_indices=layout.camera_video_indices,
                 prope_frame_ids=frame_ids,

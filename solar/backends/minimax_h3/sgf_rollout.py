@@ -10,9 +10,13 @@ import torch
 from .distributed import broadcast_sp_tensor as broadcast_sequence_parallel_tensor
 from .layout import build_stage0p5_layout, build_stage1_layout, patchify_video, unpatchify_video
 from .sgf import H3SGFWindow, h3_sgf_schedule, h3_sgf_windows
-from .sgf_attention import H3RawKVCache, H3SGFAttention
+from .sgf_attention import H3RawKVCache, H3SGFAttention, H3SGFPrefixKV, sgf_prefix_reuse_enabled
 from .torch_flow import predict_clean_sample, scale_noise
 from .torch_layout import build_row_timesteps
+
+# SOLARWM_H3_DEFER_FINITE=1: the per-denoise finiteness guard of the rollout is
+# evaluated once after the rollout instead of syncing the host 40 times.
+_DEFER_FINITE_CHECK = __import__("os").environ.get("SOLARWM_H3_DEFER_FINITE", "0") == "1"
 
 
 @dataclass
@@ -68,14 +72,11 @@ def h3_student_forward(
     chunk_index=0,
     cache=None,
     commit_cache=False,
+    prefix_kv=None,
 ):
     mode = "replay" if clean is not None else "rollout"
     layout = inputs.layout(mode)
     frames = 50 if mode == "replay" else 5
-    video_parts = [inputs.anchor_rows]
-    if clean is not None:
-        video_parts.append(patchify_video(clean.detach()))
-    video_parts.append(patchify_video(noisy))
     times, indices = build_row_timesteps(
         layout,
         timestep,
@@ -92,7 +93,34 @@ def h3_student_forward(
         chunk_index=chunk_index,
         cache=cache,
         commit_cache=commit_cache,
+        prefix_kv=prefix_kv,
     )
+    if prefix_kv is not None and prefix_kv.mode == "suffix":
+        # Current chunk rows only; the prefix rows' keys/values come from the
+        # rollout's first evaluation (see H3SGFPrefixKV).
+        start = int(layout.noisy_video_indices[0])
+        prediction, _ = student(
+            hidden_states=patchify_video(noisy),
+            audio_hidden_states=inputs.audio_rows,
+            encoder_hidden_states=inputs.prompt,
+            timestep=times,
+            timestep_indices=indices[start:],
+            fused_prope=True,
+            packed_sequence_parallel=inputs.sp_enabled,
+            sgf_attention=control,
+            return_dict=False,
+            position_ids=layout.position_ids[start:],
+            token_tags=layout.token_tags[start:],
+            video_indices=torch.arange(int(layout.sequence_length) - start, device=noisy.device),
+            audio_indices=layout.audio_indices[:0],
+            text_indices=layout.text_indices[:0],
+        )
+        velocity = unpatchify_video(prediction, frames, inputs.latent_height, inputs.latent_width)
+        return predict_clean_sample(noisy, velocity, timestep)
+    video_parts = [inputs.anchor_rows]
+    if clean is not None:
+        video_parts.append(patchify_video(clean.detach()))
+    video_parts.append(patchify_video(noisy))
     # SGF's camera controls are global immutable metadata. The dedicated
     # attention path selects local query/KV camera rows after Ulysses exchange.
     prediction, _ = student(
@@ -168,6 +196,13 @@ def h3_sgf_rollout(
         raise ValueError("H3 SGF exit index must lie in [0,4)")
     cache = H3RawKVCache()
     committed, noisy_exits = [], []
+    finite_flags = []
+    prefix_kv = (
+        H3SGFPrefixKV()
+        if inference_forward is None and not inference_full_length and sgf_prefix_reuse_enabled()
+        else None
+    )
+    reuse_kwargs = {} if prefix_kv is None else {"prefix_kv": prefix_kv}
     try:
         with torch.no_grad():
             for window in windows:
@@ -189,8 +224,15 @@ def h3_sgf_rollout(
                         timestep,
                         chunk_index=window.chunk_index,
                         cache=cache,
+                        **reuse_kwargs,
                     )
-                    if not bool(torch.isfinite(x0).all()):
+                    if prefix_kv is not None:
+                        prefix_kv.mode = "suffix"
+                    if _DEFER_FINITE_CHECK:
+                        # Accumulate on the GPU; raise once after the rollout (no
+                        # host sync per denoiser evaluation).
+                        finite_flags.append(torch.isfinite(x0).all())
+                    elif not bool(torch.isfinite(x0).all()):
                         raise FloatingPointError(
                             f"non-finite H3 SGF chunk={window.chunk_index}, denoise={step_index}"
                         )
@@ -211,9 +253,13 @@ def h3_sgf_rollout(
                     chunk_index=window.chunk_index,
                     cache=cache,
                     commit_cache=True,
+                    **reuse_kwargs,
                 )
                 if progress is not None:
                     progress(window.chunk_index + 1)
+        if finite_flags and not bool(torch.stack(finite_flags).all()):
+            bad = int((~torch.stack(finite_flags)).nonzero()[0, 0])
+            raise FloatingPointError(f"non-finite H3 SGF chunk={bad // 4}, denoise={bad % 4}")
         return H3SGFRollout(
             torch.cat(committed, dim=2),
             torch.cat(noisy_exits, dim=2),

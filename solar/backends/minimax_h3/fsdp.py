@@ -52,6 +52,7 @@ def wrap_h3_fsdp(
     activation_checkpointing: bool = True,
     frozen_base_shard_size: int | None = None,
     saved_attention_blocks: int = 0,
+    uncheckpointed_blocks: int = 0,
 ) -> torch.nn.Module:
     """Wrap 50 H3 blocks and the six FP32 leaf owners over logical DP.
 
@@ -103,14 +104,23 @@ def wrap_h3_fsdp(
     if activation_checkpointing:
         blocks_in_order = [m for m in wrapped.modules() if isinstance(m, transformer_block_cls)]
         keep = {id(m) for m in blocks_in_order[:saved_attention_blocks]}
+        # SOLARWM_H3_NO_AC_BLOCKS: the last n blocks keep all their activations (no
+        # checkpoint wrapper, no recomputation in backward); memory for time.
+        if not 0 <= uncheckpointed_blocks <= 50:
+            raise ValueError("uncheckpointed_blocks must be between 0 and 50")
+        plain = {id(m) for m in blocks_in_order[len(blocks_in_order) - uncheckpointed_blocks :]}
         apply_activation_checkpointing(
             wrapped,
             checkpoint_wrapper_fn=lambda module: block_checkpoint_wrapper(
                 module, save_attention=id(module) in keep
             ),
-            check_fn=lambda module: isinstance(module, transformer_block_cls),
+            check_fn=lambda module: (
+                isinstance(module, transformer_block_cls) and id(module) not in plain
+            ),
         )
         blocks = sum(isinstance(module, transformer_block_cls) for module in wrapped.modules())
+        if uncheckpointed_blocks and blocks != 50:
+            raise RuntimeError(f"H3 expected 50 blocks, got {blocks}")
         if blocks != 50:
             raise RuntimeError(f"H3 activation checkpointing expected 50 blocks, got {blocks}")
     return wrapped

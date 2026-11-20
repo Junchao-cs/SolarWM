@@ -104,8 +104,6 @@ def prope_qkv(
 ) -> tuple[Any, Any, Any, Callable[[Any], Any]]:
     """Apply logd4 camera PRoPE only to H3 head dimensions ``[96:128)``."""
 
-    import torch
-
     if q.ndim != 4 or q.shape != k.shape or q.shape != v.shape:
         raise ValueError("q/k/v must be equal [B,H,S,D] tensors")
     batch, _heads, sequence, head_dim = q.shape
@@ -115,6 +113,14 @@ def prope_qkv(
         raise ValueError("viewmats must be token-aligned [B,S,4,4]")
     if tuple(Ks.shape) != (batch, sequence, 3, 3):
         raise ValueError("K must be token-aligned [B,S,3,3]")
+    return prope_apply(q, k, v, prope_matrices(viewmats, Ks))
+
+
+def prope_matrices(viewmats: Any, Ks: Any) -> tuple[Any, Any, Any]:
+    """The (query, key/value, output) PRoPE matrices of ``prope_qkv`` (no q/k/v involved)."""
+
+    import torch
+
     views = logd4_relative_viewmats(viewmats)
     fixed = _fixed_focal_K(Ks)
     projection = torch.einsum("...ij,...jk->...ik", _lift_K(fixed), views)
@@ -122,6 +128,42 @@ def prope_qkv(
     kv_matrix = torch.einsum(
         "...ij,...jk->...ik", _invert_se3(views), _lift_K(_invert_K(fixed))
     ).to(views.dtype)
+    return query_matrix, kv_matrix, projection.to(views.dtype)
+
+
+def prope_fused_enabled() -> bool:
+    """Whether ``SOLARWM_H3_PROPE_FUSED`` is on, without importing Triton when it is off."""
+
+    import os
+    import sys
+
+    module = sys.modules.get(f"{__package__}.fused_prope")
+    if module is None:
+        if os.environ.get("SOLARWM_H3_PROPE_FUSED", "0") != "1":
+            return False
+        from . import fused_prope as module
+    return module.prope_fused_enabled()
+
+
+def prope_apply(
+    q: Any, k: Any, v: Any, matrices: tuple[Any, Any, Any]
+) -> tuple[Any, Any, Any, Callable[[Any], Any]]:
+    """Apply ``prope_matrices`` to q/k/v; returns the output transform as ``prope_qkv``."""
+
+    import torch
+
+    query_matrix, kv_matrix, output_matrix = matrices
+
+    if prope_fused_enabled():
+        # SOLARWM_H3_PROPE_FUSED=1: one pass per tensor (see fused_prope).
+        from .fused_prope import prope_project
+
+        return (
+            prope_project(q, query_matrix),
+            prope_project(k, kv_matrix),
+            prope_project(v, kv_matrix),
+            partial(prope_project, matrix=output_matrix),
+        )
 
     def suffix(features: Any, transform: Callable[[Any], Any]) -> Any:
         native = features[..., :H3_CAMERA_PROPE_DIM_START]
@@ -130,7 +172,7 @@ def prope_qkv(
 
     apply_q = partial(_project, matrix=query_matrix)
     apply_kv = partial(_project, matrix=kv_matrix)
-    apply_out = partial(_project, matrix=projection.to(views.dtype))
+    apply_out = partial(_project, matrix=output_matrix)
     return (
         suffix(q, apply_q),
         suffix(k, apply_kv),

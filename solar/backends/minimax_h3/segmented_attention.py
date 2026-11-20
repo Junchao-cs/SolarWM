@@ -76,7 +76,10 @@ def segment_attention(query: Any, key: Any, value: Any, plan: H3SegmentPlan, lay
     import torch
 
     if query.device.type == "cuda":
-        from flash_attn import flash_attn_func
+        from .fast_attention import attention as _attention
+
+        def flash_attn_func(q, k, v, dropout_p=0.0, causal=False):
+            return _attention(q, k, v)
     else:
 
         def flash_attn_func(q, k, v, dropout_p=0.0, causal=False):

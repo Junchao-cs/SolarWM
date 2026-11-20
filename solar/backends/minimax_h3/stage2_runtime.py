@@ -17,6 +17,40 @@ from .sgf_rollout import h3_sgf_replay
 from .stage2 import H3SGFCore
 from .torch_flow import predict_clean_sample
 
+_CRITIC_CUDNN = __import__("os").environ.get("SOLARWM_H3_SGF_CRITIC_CUDNN", "0") == "1"
+
+
+def _critic_attention():
+    """SOLARWM_H3_SGF_CRITIC_CUDNN=1: the critic update (forward and backward) on cuDNN while the
+    rest of Stage2 keeps FlashAttention-2 (SOLARWM_H3_CUDNN_STAGES without stage2)."""
+    import contextlib
+
+    from .fast_attention import cudnn_scope
+
+    return cudnn_scope() if _CRITIC_CUDNN else contextlib.nullcontext()
+
+
+_ROLLOUT_CUDNN = __import__("os").environ.get("SOLARWM_H3_SGF_ROLLOUT_CUDNN", "0") == "1"
+
+
+def _rollout_attention():
+    """SOLARWM_H3_SGF_ROLLOUT_CUDNN=1: the detached rollouts on cuDNN attention (no backward)."""
+    import contextlib
+
+    from .fast_attention import cudnn_scope
+
+    return cudnn_scope() if _ROLLOUT_CUDNN else contextlib.nullcontext()
+
+
+def _critic_saved_attention_blocks() -> int:
+    import os
+
+    raw = os.environ.get("SOLARWM_H3_SAVED_ATTENTION_BLOCKS", "").strip()
+    if "=" not in raw:
+        return 0
+    values = dict(item.split("=", 1) for item in raw.split(",") if item.strip())
+    return int(values.get("critic", 0))
+
 
 class H3SGFTrainingRuntime(H3TrainingRuntime):
     def __init__(self, config: Any) -> None:
@@ -84,6 +118,9 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
             ignored_parameters=lora.parameters,
             activation_checkpointing=trainable,
             frozen_base_shard_size=8,
+            # SOLARWM_H3_SAVED_ATTENTION_BLOCKS=...,critic=<n>: critic blocks whose
+            # attention output the activation checkpointing keeps (default 0, upstream).
+            saved_attention_blocks=_critic_saved_attention_blocks() if trainable else 0,
         )
         role = "critic" if trainable else "teacher"
         identity = load_initial_weights(self.checkpoint_cfg["initialization"][role], lora)
@@ -139,9 +176,10 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
             )
 
     def _rollout(self, inputs: Any) -> Any:
-        return self.core.rollout(
-            inputs, progress=lambda chunk: self._phase(f"rollout_chunk={chunk}/10")
-        )
+        with _rollout_attention():
+            return self.core.rollout(
+                inputs, progress=lambda chunk: self._phase(f"rollout_chunk={chunk}/10")
+            )
 
     def train_outer_step(self) -> dict[str, float]:
         torch, core = self.torch, self.core
@@ -201,13 +239,14 @@ class H3SGFTrainingRuntime(H3TrainingRuntime):
         with torch.no_grad():
             clean = h3_sgf_replay(student=self.model, inputs=inputs, rollout=rollout)[:, :, :47]
             noisy, noise, vt, audio, at = core.score_inputs(clean)
-        self._phase("critic_forward")
-        velocity = core.score_forward(critic["model"], inputs, noisy, vt, audio, at)
-        loss = h3_sgf_critic_loss(velocity, noise=noise, clean=clean)
-        if not bool(torch.isfinite(loss)):
-            raise FloatingPointError("non-finite H3 SGF critic loss")
-        self._phase("critic_backward")
-        (loss / get_sp_size()).backward()
+        with _critic_attention():
+            self._phase("critic_forward")
+            velocity = core.score_forward(critic["model"], inputs, noisy, vt, audio, at)
+            loss = h3_sgf_critic_loss(velocity, noise=noise, clean=clean)
+            if not bool(torch.isfinite(loss)):
+                raise FloatingPointError("non-finite H3 SGF critic loss")
+            self._phase("critic_backward")
+            (loss / get_sp_size()).backward()
         stats["critic_grad_norm"] = self._finish_update(
             critic["model"],
             critic["lora"],
